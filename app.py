@@ -1,15 +1,34 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 st.set_page_config(page_title="AI Commerce Intelligence", layout="wide")
+
+# ---- Custom Dark Theme ----
+st.markdown("""
+    <style>
+    .main {
+        background-color: #0E1117;
+    }
+    h1, h2, h3, h4 {
+        color: #F5F5F5;
+    }
+    .stMetric {
+        background-color: #1C1F26;
+        padding: 15px;
+        border-radius: 12px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("AI Commerce Intelligence Dashboard")
 
-# Load Data
+# ---- Load Data ----
 df = pd.read_excel("shopee_transactions_deep_sample.xlsx")
 df["order_date"] = pd.to_datetime(df["order_date"])
 df["order_week"] = df["order_date"].dt.isocalendar().week
 
-# Sidebar Filters
+# ---- Sidebar Filters ----
 st.sidebar.header("Filters")
 
 brands = st.sidebar.multiselect(
@@ -29,13 +48,28 @@ filtered_df = df[
     (df["campaign"].isin(campaigns))
 ]
 
-# KPI Metrics
+if filtered_df.empty:
+    st.warning("No data available for selected filters.")
+    st.stop()
+
+# ---- KPI Calculations ----
 total_gmv = filtered_df["revenue_sgd"].sum()
 unique_customers = filtered_df["user_id"].nunique()
-repeat_rate = filtered_df[filtered_df.duplicated(subset=["user_id"], keep=False)]["user_id"].nunique() / max(unique_customers,1)
-top_brand = filtered_df.groupby("brand")["revenue_sgd"].sum().idxmax() if not filtered_df.empty else "N/A"
 
+repeat_users = filtered_df[filtered_df.duplicated(subset=["user_id"], keep=False)]["user_id"].nunique()
+repeat_rate = repeat_users / max(unique_customers, 1)
+
+brand_revenue = filtered_df.groupby("brand")["revenue_sgd"].sum().sort_values(ascending=False)
+campaign_revenue = filtered_df.groupby("campaign")["revenue_sgd"].sum().sort_values(ascending=False)
+product_revenue = filtered_df.groupby("product_name")["revenue_sgd"].sum().sort_values(ascending=False)
+weekly_revenue = filtered_df.groupby("order_week")["revenue_sgd"].sum()
+
+top_brand = brand_revenue.index[0]
+top_brand_share = brand_revenue.iloc[0] / total_gmv
+
+# ---- KPI Row ----
 col1, col2, col3, col4 = st.columns(4)
+
 col1.metric("Total GMV", f"${total_gmv:,.0f}")
 col2.metric("Unique Customers", unique_customers)
 col3.metric("Repeat Rate", f"{repeat_rate*100:.1f}%")
@@ -43,50 +77,87 @@ col4.metric("Top Brand", top_brand)
 
 st.markdown("---")
 
-# Visuals
+# ---- Revenue by Brand ----
 st.subheader("Revenue by Brand")
-brand_revenue = filtered_df.groupby("brand")["revenue_sgd"].sum()
-st.bar_chart(brand_revenue)
 
+brand_df = brand_revenue.reset_index()
+brand_df.columns = ["Brand", "Revenue"]
+
+fig_brand = px.bar(
+    brand_df,
+    x="Brand",
+    y="Revenue",
+    color="Brand",
+    template="plotly_dark"
+)
+
+st.plotly_chart(fig_brand, use_container_width=True)
+
+# ---- Weekly Revenue Trend ----
 st.subheader("Weekly Revenue Trend")
-weekly_revenue = filtered_df.groupby("order_week")["revenue_sgd"].sum()
-st.line_chart(weekly_revenue)
 
-st.subheader("Campaign Revenue Breakdown")
-campaign_revenue = filtered_df.groupby("campaign")["revenue_sgd"].sum()
-st.bar_chart(campaign_revenue)
+weekly_df = weekly_revenue.reset_index()
+weekly_df.columns = ["Week", "Revenue"]
+
+fig_week = px.line(
+    weekly_df,
+    x="Week",
+    y="Revenue",
+    markers=True,
+    template="plotly_dark"
+)
+
+st.plotly_chart(fig_week, use_container_width=True)
+
+# ---- Campaign Revenue ----
+st.subheader("Campaign Revenue")
+
+campaign_df = campaign_revenue.reset_index()
+campaign_df.columns = ["Campaign", "Revenue"]
+
+fig_campaign = px.bar(
+    campaign_df,
+    x="Campaign",
+    y="Revenue",
+    color="Campaign",
+    template="plotly_dark"
+)
+
+st.plotly_chart(fig_campaign, use_container_width=True)
 
 st.markdown("---")
 
-# Dynamic Insight Logic
-st.subheader("Automated Insights")
+# ---- Automated Executive Intelligence ----
+st.subheader("AI Executive Intelligence")
 
-if filtered_df.empty:
-    st.write("No data selected.")
+st.markdown("### Executive Summary")
+st.write(f"Total GMV: ${total_gmv:,.0f}")
+st.write(f"Top Brand: {top_brand} contributing {top_brand_share*100:.1f}% of revenue.")
+st.write(f"Repeat Rate: {repeat_rate*100:.1f}%")
+
+st.markdown("### Growth Drivers")
+
+top_products = product_revenue.head(3).index.tolist()
+for p in top_products:
+    st.write(f"- {p}")
+
+if campaign_revenue.iloc[0] / total_gmv > 0.4:
+    st.write(f"- Revenue heavily influenced by campaign: {campaign_revenue.index[0]}")
+
+st.markdown("### Strategic Risks")
+
+if top_brand_share > 0.6:
+    st.write("- Revenue concentration risk detected in a single brand.")
 else:
-    insights = []
+    st.write("- Revenue distribution relatively balanced across brands.")
 
-    # Strengths
-    if total_gmv > 0:
-        insights.append(f"**Revenue is positive at ${total_gmv:,.0f}**, indicating demand within selected scope.")
-    if repeat_rate > 0.3:
-        insights.append(f"Repeat rate ({repeat_rate*100:.1f}%) suggests strong retention potential.")
-    else:
-        insights.append("Repeat rate is low; consider retention strategies like loyalty bundles and post-purchase vouchers.")
+if repeat_rate < 0.4:
+    st.write("- Weak retention. Opportunity to build loyalty programs.")
+else:
+    st.write("- Strong retention base. Upsell and premium bundling possible.")
 
-    # Top products
-    top_products = filtered_df.groupby("product_name")["revenue_sgd"].sum().sort_values(ascending=False).head(3)
-    insights.append("Top products in this view: " + ", ".join(top_products.index.tolist()))
+st.markdown("### Recommended Actions")
 
-    # Distribution patterns
-    if campaign_revenue.max() > (total_gmv * 0.4):
-        top_campaign = campaign_revenue.idxmax()
-        insights.append(f"Campaign **{top_campaign}** drives a large share of revenue — focus optimization here.")
-
-    # Risks
-    if len(filtered_df["brand"].unique()) < 2:
-        insights.append("Revenue concentration in a narrow set of brands; consider diversifying product exposure.")
-
-    # Present insights
-    for i, line in enumerate(insights, start=1):
-        st.write(f"{i}. {line}")
+st.write("- Double down on top-performing SKUs during high-performing campaign windows.")
+st.write("- Optimize underperforming brands through visibility and pricing strategy.")
+st.write("- Implement structured retention campaigns targeting repeat buyers.")
