@@ -19,12 +19,21 @@ def get_api_key():
 
 # ── Claude API call ───────────────────────────────────────────────────────────
 def call_claude(api_key, history, system_prompt):
-    """Call Claude claude-sonnet-4-20250514. history = list of {role, content} dicts."""
-    # Build alternating user/assistant messages (Claude requires strict alternation)
+    """Call Claude API. Ensures messages start with user and strictly alternate."""
+    # Keep only user/assistant turns, drop leading assistant messages
+    filtered = [m for m in history if m["role"] in ("user", "assistant")]
+    while filtered and filtered[0]["role"] == "assistant":
+        filtered = filtered[1:]
+    # Merge consecutive same-role messages
     messages = []
-    for m in history:
+    for m in filtered:
         role = "user" if m["role"] == "user" else "assistant"
-        messages.append({"role": role, "content": m["content"]})
+        if messages and messages[-1]["role"] == role:
+            messages[-1]["content"] += "\n" + m["content"]
+        else:
+            messages.append({"role": role, "content": m["content"]})
+    if not messages:
+        return "Please type a question."
 
     payload = {
         "model": "claude-sonnet-4-5",
@@ -292,15 +301,17 @@ hr{border-color:#e2e8f0!important}
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
+    # Logo
     st.markdown("""<div style="display:flex;align-items:center;gap:10px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;margin-bottom:14px">
       <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#2563eb,#0891b2);display:flex;align-items:center;justify-content:center;font-size:17px">⚡</div>
       <div><div style="font-weight:800;font-size:14px;color:#0f172a">Shopee Intel</div>
       <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Commerce Dashboard</div></div>
     </div>""", unsafe_allow_html=True)
 
+    # View selector (no AI tab — chat is always here)
     view = st.selectbox("View", [
         "📊 Overview", "📅 MoM Analysis", "📆 Weekly",
-        "📆 Daily Analysis", "📣 Campaigns", "📍 Geography", "🤖 AI Analyst"
+        "📆 Daily Analysis", "📣 Campaigns", "📍 Geography"
     ], label_visibility="collapsed")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Filters</p>', unsafe_allow_html=True)
@@ -312,34 +323,101 @@ with st.sidebar:
     city_filter    = "All Cities"
     daily_month    = "All"
 
-    if "Overview"   in view: month_filter   = st.selectbox("Month", ["All Months"] + actual_yms)
-    if "MoM"        in view:
+    if "Overview"  in view: month_filter   = st.selectbox("Month", ["All Months"] + actual_yms)
+    if "MoM"       in view:
         months_compare = st.multiselect("Compare months", actual_yms, default=actual_yms)
         if not months_compare: months_compare = actual_yms
-    if "Campaigns"  in view: camp_filter    = st.selectbox("Campaign", ["All Campaigns"] + list(campaigns_data["name"]))
-    if "Geography"  in view: city_filter    = st.selectbox("City", ["All Cities"] + list(cities_data["name"]))
-    if "Daily"      in view: daily_month    = st.selectbox("Month", ["All", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026"])
+    if "Campaigns" in view: camp_filter    = st.selectbox("Campaign", ["All Campaigns"] + list(campaigns_data["name"]))
+    if "Geography" in view: city_filter    = st.selectbox("City", ["All Cities"] + list(cities_data["name"]))
+    if "Daily"     in view: daily_month    = st.selectbox("Month", ["All", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026"])
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Data Upload</p>', unsafe_allow_html=True)
     up = st.file_uploader("CSV/Excel", type=["csv","xlsx","xls"], label_visibility="collapsed")
     if up:
         st.success(f"✓ {up.name}")
 
-    # ── AI Status — FIXED: proper if/else block, NOT ternary expression ───────
-    st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">AI Status</p>', unsafe_allow_html=True)
-    if get_api_key():
-        st.markdown('<div class="ai-status-ok">✅ Claude AI ready</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="ai-status-err">❌ Add ANTHROPIC_API_KEY to Secrets</div>', unsafe_allow_html=True)
-        with st.expander("How to fix"):
-            st.markdown("""
-1. Streamlit Cloud → your app → **⋮ → Settings → Secrets**
-2. Add: `ANTHROPIC_API_KEY = "sk-ant-..."`
-3. Save & reboot
-4. Get key: [console.anthropic.com](https://console.anthropic.com)
-            """)
+    # ── Persistent AI Chatbot ─────────────────────────────────────────────────
+    st.markdown("""<div style="border-top:1px solid #e2e8f0;margin:16px 0 12px"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#0891b2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">🤖</div>
+      <div>
+        <div style="font-weight:700;font-size:12px;color:#0f172a">AI Analyst</div>
+        <div style="font-size:10px;color:#16a34a">● Claude AI · always on</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
-    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:20px">Shopee Commerce Intelligence<br>Powered by Claude AI (Anthropic)</p>', unsafe_allow_html=True)
+    api_key = get_api_key()
+
+    # Init chat history
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = [{
+            "role": "assistant",
+            "content": "👋 Hi! Ask me anything about your Shopee data."
+        }]
+
+    # Show last 4 messages in a scrollable box
+    chat_html = '<div style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;margin-bottom:10px">'
+    for msg in st.session_state.chat_history[-6:]:
+        if msg["role"] == "user":
+            chat_html += f'<div style="background:#eff6ff;border-radius:10px 10px 3px 10px;padding:8px 11px;font-size:11px;color:#1e293b;align-self:flex-end;max-width:90%;margin-left:10%">{msg["content"]}</div>'
+        else:
+            txt = msg["content"]
+            if "→ Action:" in txt:
+                parts = txt.split("→ Action:", 1)
+                chat_html += f'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px 10px 10px 3px;padding:8px 11px;font-size:11px;color:#1e293b;max-width:95%">{parts[0].strip()}<div style="background:#fffbeb;border-left:2px solid #d97706;padding:5px 8px;margin-top:6px;font-size:10px;color:#92400e;font-weight:600;border-radius:0 4px 4px 0">→ Action: {parts[1].strip()}</div></div>'
+            else:
+                chat_html += f'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px 10px 10px 3px;padding:8px 11px;font-size:11px;color:#1e293b;max-width:95%">{txt}</div>'
+    chat_html += '</div>'
+    st.markdown(chat_html, unsafe_allow_html=True)
+
+    # Quick question chips
+    with st.expander("💡 Quick questions"):
+        for i, q in enumerate(QUICK_QS):
+            if st.button(q, key=f"sq_{i}", use_container_width=True):
+                st.session_state._pending_q = q
+
+    # Text input + send button
+    col_inp, col_btn = st.columns([5, 1])
+    with col_inp:
+        user_input = st.text_input("chat_in", placeholder="Ask about your data…",
+                                   label_visibility="collapsed", key="sidebar_chat_input")
+    with col_btn:
+        send = st.button("↑", key="sidebar_send", help="Send")
+
+    # Process message
+    prompt = None
+    if send and user_input.strip():
+        prompt = user_input.strip()
+    elif hasattr(st.session_state, "_pending_q"):
+        prompt = st.session_state._pending_q
+        del st.session_state._pending_q
+
+    if prompt:
+        last_user = next((m["content"] for m in reversed(st.session_state.chat_history) if m["role"] == "user"), None)
+        if prompt != last_user:
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            if api_key:
+                api_history = [m for m in st.session_state.chat_history if m["role"] in ("user","assistant")]
+                reply = call_claude(api_key, api_history, AI_SYSTEM)
+            else:
+                reply = "⚠️ Add ANTHROPIC_API_KEY to Streamlit Secrets to enable AI."
+            st.session_state.chat_history.append({"role": "assistant", "content": reply})
+            st.rerun()
+
+    # Clear chat + AI status
+    c1, c2 = st.columns(2)
+    with c1:
+        if len(st.session_state.chat_history) > 1:
+            if st.button("🗑️ Clear", key="clr_chat", use_container_width=True):
+                st.session_state.chat_history = [st.session_state.chat_history[0]]
+                st.rerun()
+    with c2:
+        if api_key:
+            st.markdown('<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:5px 8px;font-size:10px;color:#15803d;font-weight:600;text-align:center">✅ Claude ready</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:5px 8px;font-size:10px;color:#dc2626;font-weight:600;text-align:center">❌ No API key</div>', unsafe_allow_html=True)
+
+    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:12px">Powered by Claude AI (Anthropic)</p>', unsafe_allow_html=True)
 
 # ── Filtered slices ───────────────────────────────────────────────────────────
 filt_m  = actual_monthly if month_filter == "All Months"    else actual_monthly[actual_monthly["ym"] == month_filter]
@@ -755,95 +833,3 @@ elif "Geography" in view:
         fig_b.update_layout(**PL(height=180))
         st.plotly_chart(fig_b, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# AI ANALYST — Claude-powered, conversation memory, action highlights
-# ══════════════════════════════════════════════════════════════════════════════
-elif "AI Analyst" in view:
-    st.markdown('<div class="section-header">🤖 AI Analyst</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Powered by Claude AI (Anthropic) · Full dataset context · Conversation memory</div>', unsafe_allow_html=True)
-
-    api_key = get_api_key()
-
-    # Block the page if no key — with clear instructions
-    if not api_key:
-        st.error("⚠️ **ANTHROPIC_API_KEY not found.** The AI Analyst needs this to work.")
-        st.markdown("""
-**To fix in 2 minutes:**
-1. Go to **Streamlit Cloud** → your app → **⋮ menu → Settings → Secrets**
-2. Add this line:  `ANTHROPIC_API_KEY = "sk-ant-..."`
-3. Click **Save** — the app will reboot automatically
-4. Get a free key at [console.anthropic.com](https://console.anthropic.com)
-        """)
-        st.stop()
-
-    # Init conversation history
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = [{
-            "role": "assistant",
-            "content": "👋 Hi! I'm your Shopee Commerce Analyst, powered by Claude AI.\n\nI know your full dataset — 800 orders, Oct 2025–Jan 2026, all KPIs, campaigns, cities, and weekly trends.\n\nAsk me anything below, or pick a quick question to get started."
-        }]
-
-    # Quick question buttons (3-column grid)
-    st.markdown("**Quick questions — click any to ask instantly:**")
-    cols = st.columns(3)
-    for i, q in enumerate(QUICK_QS):
-        if cols[i % 3].button(q, key=f"qb_{i}", use_container_width=True):
-            st.session_state._pending_q = q
-    st.divider()
-
-    # Render existing conversation
-    for msg in st.session_state.chat_history:
-        role = msg["role"]
-        with st.chat_message(role, avatar="🤖" if role == "assistant" else None):
-            content = msg["content"]
-            # Highlight the action line in amber if present
-            if role == "assistant" and "→ Action:" in content:
-                parts = content.split("→ Action:", 1)
-                st.write(parts[0].strip())
-                st.markdown(f'<div class="action-box">→ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
-            else:
-                st.write(content)
-
-    # Clear chat button
-    if len(st.session_state.chat_history) > 1:
-        if st.button("🗑️ Clear conversation", type="secondary"):
-            st.session_state.chat_history = [st.session_state.chat_history[0]]
-            st.rerun()
-
-    # Resolve prompt — typed input or pending quick question
-    prompt = st.chat_input("Ask about your Shopee data…")
-    if not prompt and hasattr(st.session_state, "_pending_q"):
-        prompt = st.session_state._pending_q
-        del st.session_state._pending_q
-
-    if prompt:
-        # Prevent duplicate user messages on rerun
-        last_user = next(
-            (m["content"] for m in reversed(st.session_state.chat_history) if m["role"] == "user"),
-            None
-        )
-        if prompt != last_user:
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.write(prompt)
-
-            with st.chat_message("assistant", avatar="🤖"):
-                with st.spinner("Analysing your data…"):
-                    # Pass full history (user + assistant turns) to Claude
-                    api_history = [
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state.chat_history
-                        if m["role"] in ("user", "assistant")
-                    ]
-                    reply = call_claude(api_key, api_history, AI_SYSTEM)
-
-                # Render with action highlight
-                if "→ Action:" in reply:
-                    parts = reply.split("→ Action:", 1)
-                    st.write(parts[0].strip())
-                    st.markdown(f'<div class="action-box">→ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
-                else:
-                    st.write(reply)
-
-            st.session_state.chat_history.append({"role": "assistant", "content": reply})
