@@ -25,8 +25,9 @@ def get_api_key():
     return os.environ.get("GEMINI_API_KEY", "")
 
 # ── Gemini call with auto-retry on 429 ───────────────────────────────────────
-def call_gemini(api_key, history, system_prompt, retries=3):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+GEMINI_MODELS = ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-2.0-flash"]
+
+def call_gemini(api_key, history, system_prompt):
     contents = []
     for msg in history:
         role = "user" if msg["role"] == "user" else "model"
@@ -36,15 +37,18 @@ def call_gemini(api_key, history, system_prompt, retries=3):
         "contents": contents,
         "generationConfig": {"maxOutputTokens": 500, "temperature": 0.7},
     }
-    for attempt in range(retries):
-        resp = requests.post(url, json=payload, timeout=30)
-        if resp.status_code == 429:
-            wait = 2 ** attempt * 5   # 5s, 10s, 20s
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return "⏳ Gemini is busy right now (rate limit). Please wait 30 seconds and try again."
+    for model in GEMINI_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        for attempt in range(2):
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code == 429:
+                time.sleep(4)
+                continue
+            if resp.status_code in (404, 400):
+                break
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return "⏳ All models busy. Please wait 30 seconds and try again."
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 C = {
@@ -172,7 +176,11 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;background:#f1f5f9!important;color:#1e293b!important}
-.block-container{padding:1.5rem 2rem 3rem!important;background:#f1f5f9!important}
+#MainMenu{visibility:hidden}
+header[data-testid="stHeader"]{display:none!important}
+footer{visibility:hidden}
+div[data-testid="stToolbar"]{display:none!important}
+.block-container{padding:1rem 2rem 3rem!important;background:#f1f5f9!important}
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
 section[data-testid="stSidebar"] *{color:#374151!important}
 .stSelectbox>div>div{background:#f8fafc!important;border-color:#e2e8f0!important;color:#1e293b!important;border-radius:8px!important}
