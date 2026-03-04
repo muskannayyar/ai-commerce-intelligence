@@ -702,7 +702,13 @@ if prompt:
                     ]
                     reply = call_gemini(api_key, history, system_prompt)
                 except requests.exceptions.HTTPError as e:
-                    reply = f"❌ Gemini API error: {e.response.status_code} — check your API key is valid."
+                    code = e.response.status_code
+                    if code == 429:
+                        reply = "⏳ Rate limit hit — please wait 10 seconds and try again. (Gemini free tier allows ~15 requests/min)"
+                    elif code == 404:
+                        reply = "❌ Gemini model not found (404). Try again in a moment."
+                    else:
+                        reply = f"❌ Gemini API error: {code} — check your API key is valid."
                 except Exception as e:
                     reply = f"❌ Error: {str(e)}"
 
