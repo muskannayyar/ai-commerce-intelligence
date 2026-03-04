@@ -27,7 +27,7 @@ def call_claude(api_key, history, system_prompt):
         messages.append({"role": role, "content": m["content"]})
 
     payload = {
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 600,
         "system": system_prompt,
         "messages": messages,
