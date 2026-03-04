@@ -384,7 +384,7 @@ if "Overview" in view:
         fig.add_trace(go.Scatter(x=forecast["ym"],y=forecast[mkey],mode="markers",
             name="Forecast",marker=dict(size=9,color=C["amber"],symbol="diamond")))
         fig.update_layout(**PLOT,height=210,showlegend=True,
-            legend=dict(font=dict(color="#6b7280",size=10),bgcolor="rgba(0,0,0,0)",x=0,y=1))
+            legend=dict(font=dict(color="#6b7280",size=10),bgcolor="rgba(0,0,0,0)"))
         st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
         st.markdown('</div>',unsafe_allow_html=True)
 
