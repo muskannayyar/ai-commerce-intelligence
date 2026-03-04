@@ -2,8 +2,8 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
-import anthropic
 import os
+import requests
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -13,18 +13,39 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── API Key — try st.secrets first, then env var ──────────────────────────────
+# ── API Key — Gemini (free tier) ──────────────────────────────────────────────
 def get_api_key():
     try:
-        key = st.secrets["ANTHROPIC_API_KEY"]
-        if key and str(key).startswith("sk-"):
+        key = st.secrets["GEMINI_API_KEY"]
+        if key and str(key).startswith("AIza"):
             return str(key)
     except Exception:
         pass
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if key and key.startswith("sk-"):
+    key = os.environ.get("GEMINI_API_KEY", "")
+    if key:
         return key
     return ""
+
+def call_gemini(api_key, history, system_prompt):
+    """Call Gemini 1.5 Flash (free tier) via REST API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    # Build contents from history
+    contents = []
+    for msg in history:
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+    
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 600, "temperature": 0.7}
+    }
+    
+    resp = requests.post(url, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 C = {
@@ -244,10 +265,10 @@ with st.sidebar:
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">AI Status</p>', unsafe_allow_html=True)
     _key = get_api_key()
     if _key:
-        st.success("✅ AI Analyst ready")
+        st.success("✅ Gemini AI ready (free)")
     else:
-        st.error("❌ API key missing")
-        st.caption("Add ANTHROPIC_API_KEY in Streamlit Cloud → Settings → Secrets")
+        st.error("❌ Gemini API key missing")
+        st.caption("Add GEMINI_API_KEY in Streamlit Cloud → Settings → Secrets")
 
     st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:20px">Shopee Commerce Intelligence<br>Powered by Claude AI</p>', unsafe_allow_html=True)
 
@@ -662,32 +683,26 @@ if prompt:
             api_key = get_api_key()
             if not api_key:
                 reply = (
-                    "⚠️ API key not found.\n\n"
-                    "To fix: Go to your Streamlit Cloud app → **Manage app** → **Settings** → **Secrets** and add:\n\n"
-                    "```\nANTHROPIC_API_KEY = \"sk-ant-your-key-here\"\n```\n\n"
-                    "Then click **Save** and the app will reboot automatically."
+                    "⚠️ Gemini API key not found.\n\n"
+                    "Go to **aistudio.google.com** → Get API Key (free), then add to "
+                    "Streamlit Cloud → Manage app → Settings → Secrets:\n\n"
+                    "```\nGEMINI_API_KEY = \"AIza...\"\n```"
                 )
             else:
                 try:
-                    client = anthropic.Anthropic(api_key=api_key)
+                    system_prompt = (
+                        "You are a sharp Shopee Singapore e-commerce analyst. "
+                        "Be concise — max 4 sentences. Use exact numbers. "
+                        "Give 1 clear action at the end.\n\nData:\n" + AI_CTX
+                    )
                     history = [
                         {"role": m["role"], "content": m["content"]}
                         for m in st.session_state.chat_history
                         if m["role"] in ("user", "assistant")
                     ]
-                    response = client.messages.create(
-                        model="claude-haiku-4-5-20251001",
-                        max_tokens=600,
-                        system=(
-                            "You are a sharp Shopee Singapore e-commerce analyst. "
-                            "Be concise — max 4 sentences. Use exact numbers. "
-                            "Give 1 clear action at the end.\n\nData:\n" + AI_CTX
-                        ),
-                        messages=history,
-                    )
-                    reply = response.content[0].text
-                except anthropic.AuthenticationError:
-                    reply = "❌ Invalid API key (401 error). Please check the key is correct in Streamlit Cloud Secrets."
+                    reply = call_gemini(api_key, history, system_prompt)
+                except requests.exceptions.HTTPError as e:
+                    reply = f"❌ Gemini API error: {e.response.status_code} — check your API key is valid."
                 except Exception as e:
                     reply = f"❌ Error: {str(e)}"
 
