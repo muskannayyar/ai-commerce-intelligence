@@ -255,10 +255,6 @@ with st.sidebar:
     if uploaded_file:
         st.success(f"✓ {uploaded_file.name}")
 
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown('<div style="font-size:10px;color:#334155;text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-bottom:8px">AI Analyst</div>', unsafe_allow_html=True)
-    api_key = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...", help="Required for AI chat")
-
     st.markdown("""
     <div style="margin-top:24px;font-size:10px;color:#1e3a5f;text-align:center">
     Shopee Commerce Intelligence<br>Powered by Claude AI
@@ -709,9 +705,9 @@ if prompt:
     with st.chat_message("assistant"):
         with st.spinner("Analysing…"):
             try:
-                key = api_key or os.environ.get("ANTHROPIC_API_KEY","")
+                key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
                 if not key:
-                    reply = "⚠️ Please enter your Anthropic API key in the sidebar to enable AI responses."
+                    reply = "⚠️ ANTHROPIC_API_KEY not found. Please add it in Streamlit Cloud → Settings → Secrets."
                 else:
                     client = anthropic.Anthropic(api_key=key)
                     history = [{"role":m["role"],"content":m["content"]}
