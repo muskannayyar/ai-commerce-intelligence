@@ -2,87 +2,113 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-import os, requests, time
+import os, requests
 from datetime import date, timedelta
 
 st.set_page_config(page_title="Shopee Commerce Intelligence", page_icon="⚡", layout="wide")
 
-# ── API Key ───────────────────────────────────────────────────────────────────
+# ── API Key (Claude / Anthropic) ──────────────────────────────────────────────
 def get_api_key():
     try:
-        k = st.secrets["GEMINI_API_KEY"]
-        if k and str(k).startswith("AIza"): return str(k)
-    except: pass
-    return os.environ.get("GEMINI_API_KEY","")
+        k = st.secrets["ANTHROPIC_API_KEY"]
+        if k and str(k).startswith("sk-ant-"):
+            return str(k)
+    except Exception:
+        pass
+    return os.environ.get("ANTHROPIC_API_KEY", "")
 
-GEMINI_MODELS = ["gemini-1.5-flash-8b","gemini-1.5-flash","gemini-2.0-flash"]
+# ── Claude API call ───────────────────────────────────────────────────────────
+def call_claude(api_key, history, system_prompt):
+    """Call Claude claude-sonnet-4-20250514. history = list of {role, content} dicts."""
+    # Build alternating user/assistant messages (Claude requires strict alternation)
+    messages = []
+    for m in history:
+        role = "user" if m["role"] == "user" else "assistant"
+        messages.append({"role": role, "content": m["content"]})
 
-def call_gemini(api_key, history, system_prompt):
-    contents = [{"role":"user" if m["role"]=="user" else "model","parts":[{"text":m["content"]}]} for m in history]
-    payload = {"system_instruction":{"parts":[{"text":system_prompt}]},"contents":contents,
-               "generationConfig":{"maxOutputTokens":500,"temperature":0.7}}
-    for model in GEMINI_MODELS:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        for _ in range(2):
-            r = requests.post(url, json=payload, timeout=30)
-            if r.status_code == 429: time.sleep(5); continue
-            if r.status_code in (400,404): break
-            r.raise_for_status()
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return "⏳ Rate limit reached. Please wait 30 seconds and try again."
+    payload = {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 600,
+        "system": system_prompt,
+        "messages": messages,
+    }
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()["content"][0]["text"]
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code if e.response else "?"
+        if code == 401:
+            return "⚠️ Invalid API key. Check your ANTHROPIC_API_KEY in Streamlit Secrets."
+        if code == 429:
+            return "⏳ Rate limit hit — wait a moment and try again."
+        return f"❌ API error {code}: {e}"
+    except requests.exceptions.Timeout:
+        return "⏳ Request timed out — try again."
+    except Exception as e:
+        return f"❌ Unexpected error: {e}"
 
 # ── Colors ────────────────────────────────────────────────────────────────────
-C = {"blue":"#2563eb","cyan":"#0891b2","violet":"#7c3aed","purple":"#9333ea",
-     "green":"#16a34a","amber":"#d97706","red":"#dc2626","orange":"#ea580c"}
-
-# ── Plot layout helper (avoids keyword conflicts) ─────────────────────────────
-BASE_PLOT = dict(
-    paper_bgcolor=None, plot_bgcolor=None,
-    font=dict(color="#374151", family="Inter,sans-serif", size=11),
-    margin=dict(l=0,r=0,t=10,b=0),
-    showlegend=False,
-    xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#6b7280",size=10)),
-    yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", zeroline=False, tickfont=dict(color="#6b7280",size=10)),
-)
+C = {
+    "blue":   "#2563eb", "cyan":   "#0891b2",
+    "violet": "#7c3aed", "purple": "#9333ea",
+    "green":  "#16a34a", "amber":  "#d97706",
+    "red":    "#dc2626", "orange": "#ea580c",
+}
 
 def PL(height=220, legend=False, **kw):
-    """Return a clean layout dict merging BASE_PLOT with overrides."""
-    d = dict(BASE_PLOT)
-    d["height"] = height
-    d["showlegend"] = legend
+    d = dict(
+        paper_bgcolor=None, plot_bgcolor=None,
+        font=dict(color="#374151", family="Inter,sans-serif", size=11),
+        margin=dict(l=0, r=0, t=10, b=0),
+        showlegend=legend,
+        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#6b7280", size=10)),
+        yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", zeroline=False,
+                   tickfont=dict(color="#6b7280", size=10)),
+        height=height,
+    )
     if legend:
-        d["legend"] = dict(font=dict(color="#6b7280",size=10), bgcolor=None)
+        d["legend"] = dict(font=dict(color="#6b7280", size=10), bgcolor=None)
     d.update(kw)
     return d
 
 # ── Singapore Events ──────────────────────────────────────────────────────────
 SG_EVENTS = {
-    date(2025,10,1):"🎂 Children's Day",
-    date(2025,10,31):"🎃 Halloween",
-    date(2025,11,1):"🛍️ 11.11 Countdown",
-    date(2025,11,11):"🛍️ 11.11 Mega Sale",
-    date(2025,12,25):"🎄 Christmas Day ✦PH",
-    date(2025,12,26):"🎁 Boxing Day",
-    date(2025,12,31):"🎆 New Year's Eve",
-    date(2026,1,1):"🎉 New Year's Day ✦PH",
-    date(2026,1,29):"🧧 Chinese New Year ✦PH",
-    date(2026,1,30):"🧧 CNY Day 2 ✦PH",
+    date(2025, 10,  1): "🎂 Children's Day",
+    date(2025, 10, 31): "🎃 Halloween",
+    date(2025, 11,  1): "🛍️ 11.11 Countdown",
+    date(2025, 11, 11): "🛍️ 11.11 Mega Sale",
+    date(2025, 12, 25): "🎄 Christmas Day ✦PH",
+    date(2025, 12, 26): "🎁 Boxing Day",
+    date(2025, 12, 31): "🎆 New Year's Eve",
+    date(2026,  1,  1): "🎉 New Year's Day ✦PH",
+    date(2026,  1, 29): "🧧 Chinese New Year ✦PH",
+    date(2026,  1, 30): "🧧 CNY Day 2 ✦PH",
 }
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
     monthly = pd.DataFrame([
-        {"ym":"Oct 2025","month":"Oct","revenue":88216,"orders":218,"aov":405,"customers":217,"voucher_rate":50.0,"avg_delivery":3.1,"avg_rating":4.67,"is_forecast":False},
-        {"ym":"Nov 2025","month":"Nov","revenue":94439,"orders":201,"aov":470,"customers":199,"voucher_rate":55.2,"avg_delivery":3.1,"avg_rating":4.64,"is_forecast":False},
-        {"ym":"Dec 2025","month":"Dec","revenue":96386,"orders":204,"aov":472,"customers":203,"voucher_rate":45.1,"avg_delivery":3.1,"avg_rating":4.64,"is_forecast":False},
-        {"ym":"Jan 2026","month":"Jan","revenue":74936,"orders":177,"aov":423,"customers":176,"voucher_rate":44.1,"avg_delivery":3.0,"avg_rating":4.64,"is_forecast":False},
+        {"ym":"Oct 2025","month":"Oct","revenue":88216, "orders":218,"aov":405,"customers":217,"voucher_rate":50.0,"avg_delivery":3.1,"avg_rating":4.67,"is_forecast":False},
+        {"ym":"Nov 2025","month":"Nov","revenue":94439, "orders":201,"aov":470,"customers":199,"voucher_rate":55.2,"avg_delivery":3.1,"avg_rating":4.64,"is_forecast":False},
+        {"ym":"Dec 2025","month":"Dec","revenue":96386, "orders":204,"aov":472,"customers":203,"voucher_rate":45.1,"avg_delivery":3.1,"avg_rating":4.64,"is_forecast":False},
+        {"ym":"Jan 2026","month":"Jan","revenue":74936, "orders":177,"aov":423,"customers":176,"voucher_rate":44.1,"avg_delivery":3.0,"avg_rating":4.64,"is_forecast":False},
         {"ym":"Feb 2026*","month":"Feb*","revenue":82000,"orders":188,"aov":436,"customers":186,"voucher_rate":46.0,"avg_delivery":3.0,"avg_rating":4.65,"is_forecast":True},
     ])
-    monthly["rev_mom"]  = monthly["revenue"].pct_change()*100
-    monthly["ord_mom"]  = monthly["orders"].pct_change()*100
-    monthly["aov_mom"]  = monthly["aov"].pct_change()*100
-    monthly["cust_mom"] = monthly["customers"].pct_change()*100
+    monthly["rev_mom"]  = monthly["revenue"].pct_change() * 100
+    monthly["ord_mom"]  = monthly["orders"].pct_change() * 100
+    monthly["aov_mom"]  = monthly["aov"].pct_change() * 100
+    monthly["cust_mom"] = monthly["customers"].pct_change() * 100
     return monthly
 
 @st.cache_data
@@ -107,91 +133,134 @@ def load_static():
         {"wk":"W04","revenue":19257,"orders":49,"aov":393,"voucher_rate":40.8},
         {"wk":"W05","revenue":14023,"orders":19,"aov":738,"voucher_rate":42.1},
     ])
-    weekly["rev_wow"] = weekly["revenue"].pct_change()*100
+    weekly["rev_wow"] = weekly["revenue"].pct_change() * 100
     categories = pd.DataFrame([
-        {"name":"Electronics","revenue":251955,"orders":324,"color":C["blue"]},
-        {"name":"Home & Living","revenue":67817,"orders":164,"color":C["cyan"]},
-        {"name":"Fashion","revenue":26834,"orders":147,"color":C["violet"]},
-        {"name":"Beauty","revenue":7371,"orders":165,"color":C["purple"]},
+        {"name":"Electronics",  "revenue":251955,"orders":324,"color":C["blue"]},
+        {"name":"Home & Living","revenue":67817, "orders":164,"color":C["cyan"]},
+        {"name":"Fashion",      "revenue":26834, "orders":147,"color":C["violet"]},
+        {"name":"Beauty",       "revenue":7371,  "orders":165,"color":C["purple"]},
     ])
     campaigns = pd.DataFrame([
-        {"name":"Double Day","revenue":89029,"orders":172,"color":C["blue"]},
+        {"name":"Double Day",   "revenue":89029,"orders":172,"color":C["blue"]},
         {"name":"Mega Campaign","revenue":75121,"orders":168,"color":C["cyan"]},
-        {"name":"Brand Day","revenue":68307,"orders":161,"color":C["violet"]},
-        {"name":"Flash Sale","revenue":63142,"orders":136,"color":C["purple"]},
+        {"name":"Brand Day",    "revenue":68307,"orders":161,"color":C["violet"]},
+        {"name":"Flash Sale",   "revenue":63142,"orders":136,"color":C["purple"]},
     ])
     cities = pd.DataFrame([
         {"name":"Woodlands","revenue":67353,"orders":126},
-        {"name":"Tampines","revenue":62731,"orders":149},
+        {"name":"Tampines", "revenue":62731,"orders":149},
         {"name":"Singapore","revenue":62174,"orders":149},
-        {"name":"Punggol","revenue":60186,"orders":122},
-        {"name":"Yishun","revenue":56635,"orders":138},
-        {"name":"Jurong","revenue":44898,"orders":116},
+        {"name":"Punggol",  "revenue":60186,"orders":122},
+        {"name":"Yishun",   "revenue":56635,"orders":138},
+        {"name":"Jurong",   "revenue":44898,"orders":116},
     ])
     payments = pd.DataFrame([
-        {"name":"PayNow","value":104497,"orders":212,"color":C["blue"]},
-        {"name":"ShopeePay","value":92065,"orders":199,"color":C["cyan"]},
-        {"name":"SPayLater","value":80145,"orders":190,"color":C["violet"]},
-        {"name":"Credit Card","value":77270,"orders":199,"color":C["purple"]},
+        {"name":"PayNow",      "value":104497,"orders":212,"color":C["blue"]},
+        {"name":"ShopeePay",   "value":92065, "orders":199,"color":C["cyan"]},
+        {"name":"SPayLater",   "value":80145, "orders":190,"color":C["violet"]},
+        {"name":"Credit Card", "value":77270, "orders":199,"color":C["purple"]},
     ])
     brands = pd.DataFrame([
-        {"name":"LG","revenue":227248,"orders":158,"color":C["blue"]},
-        {"name":"Philips","revenue":67817,"orders":164,"color":C["cyan"]},
-        {"name":"Nike","revenue":26834,"orders":147,"color":C["violet"]},
-        {"name":"Anker","revenue":24707,"orders":166,"color":C["purple"]},
-        {"name":"COSRX","revenue":7371,"orders":165,"color":C["green"]},
+        {"name":"LG",     "revenue":227248,"orders":158,"color":C["blue"]},
+        {"name":"Philips","revenue":67817, "orders":164,"color":C["cyan"]},
+        {"name":"Nike",   "revenue":26834, "orders":147,"color":C["violet"]},
+        {"name":"Anker",  "revenue":24707, "orders":166,"color":C["purple"]},
+        {"name":"COSRX",  "revenue":7371,  "orders":165,"color":C["green"]},
     ])
     dow = pd.DataFrame([
         {"day":"Mon","revenue":45507},{"day":"Tue","revenue":47581},
         {"day":"Wed","revenue":62817},{"day":"Thu","revenue":41193},
         {"day":"Fri","revenue":56486},{"day":"Sat","revenue":50653},{"day":"Sun","revenue":49740},
     ])
-    summary = {"totalRev":353977,"totalOrders":800,"totalCust":772,"repeatRate":3.6,
-               "avgDelivery":3.12,"avgRating":4.65,"voucherRate":48.75,"voucherDiscount":3890,
-               "revPerCust":458.5,"gross":357867}
+    summary = {
+        "totalRev":353977,"totalOrders":800,"totalCust":772,"repeatRate":3.6,
+        "avgDelivery":3.12,"avgRating":4.65,"voucherRate":48.75,"voucherDiscount":3890,
+        "revPerCust":458.5,"gross":357867,
+    }
     return weekly, categories, campaigns, cities, payments, brands, dow, summary
 
 @st.cache_data
 def load_daily():
-    rng = np.random.default_rng(42)
+    rng  = np.random.default_rng(42)
     rows = []
-    d = date(2025,10,1)
-    targets = {10:88216,11:94439,12:96386,1:74936}
-    while d <= date(2026,1,31):
-        base = targets[d.month]/30
+    d    = date(2025, 10, 1)
+    targets = {10: 88216, 11: 94439, 12: 96386, 1: 74936}
+    while d <= date(2026, 1, 31):
+        base  = targets[d.month] / 30
         dow_m = {0:1.05,1:1.08,2:1.35,3:0.9,4:1.2,5:1.1,6:1.06}[d.weekday()]
-        ev = SG_EVENTS.get(d,"")
-        ev_m = 2.8 if "11.11" in ev else (1.9 if "Christmas" in ev else (1.7 if "CNY" in ev else (1.5 if "New Year" in ev and "Eve" not in ev else (1.3 if "PH" in ev else 1.0))))
-        rev = int(base * dow_m * ev_m * rng.uniform(0.82,1.18))
-        orders = max(1,int(rev/rng.uniform(380,520)))
+        ev    = SG_EVENTS.get(d, "")
+        ev_m  = (2.8 if "11.11" in ev else
+                 1.9 if "Christmas" in ev else
+                 1.7 if "CNY" in ev else
+                 1.5 if "New Year" in ev and "Eve" not in ev else
+                 1.3 if "PH" in ev else 1.0)
+        rev    = int(base * dow_m * ev_m * rng.uniform(0.82, 1.18))
+        orders = max(1, int(rev / rng.uniform(380, 520)))
         rows.append({"date":d,"weekday":d.strftime("%a"),"revenue":rev,"orders":orders,
                      "aov":round(rev/orders),"voucher_rate":round(rng.uniform(40,60),1),"event":ev})
         d += timedelta(days=1)
     df = pd.DataFrame(rows)
-    df["rev_dod"] = df["revenue"].pct_change()*100
+    df["rev_dod"] = df["revenue"].pct_change() * 100
     return df
 
+# Load data
 monthly_data   = load_data()
 weekly_data, categories_data, campaigns_data, cities_data, payments_data, brands_data, dow_data, SUMMARY = load_static()
 daily_data     = load_daily()
-actual_monthly = monthly_data[monthly_data["is_forecast"]==False]
+actual_monthly = monthly_data[monthly_data["is_forecast"] == False]
 
-AI_CTX = """Shopee Singapore Oct 2025-Jan 2026, 800 orders.
-Revenue: Oct S$88,216 > Nov S$94,439(+7.1%) > Dec S$96,386(+2.1%) > Jan S$74,936(-22.3%). Feb 2026 forecast S$82,000(+9.4%).
-Total S$353,977 | AOV S$442 | Repeat 3.6% | Delivery 3.1d | Rating 4.65 | Voucher 48.75%
+# ── AI context & system prompt ────────────────────────────────────────────────
+AI_CTX = """Shopee Singapore Oct 2025–Jan 2026, 800 orders.
+Revenue: Oct S$88,216 → Nov S$94,439(+7.1%) → Dec S$96,386(+2.1%) → Jan S$74,936(-22.3%). Feb 2026 forecast S$82,000(+9.4%).
+Total S$353,977 | AOV S$442 | Repeat 3.6% | Delivery 3.1d | Rating 4.65★ | Voucher 48.75%
 Electronics 71% S$251,955 | Home S$67,817 | Fashion S$26,834 | Beauty S$7,371
-LG 64% S$227,248 | Philips S$67,817 | Nike S$26,834 | Anker S$24,707
-Double Day S$89,029 best | Mega S$75,121 | Brand Day S$68,307 | Flash Sale S$63,142
-Woodlands best S$67,353 | Jurong weakest S$44,898 (-35%)
-PayNow leads S$104,497 | Desktop 52% vs Mobile 48%
-Wednesday best S$62,817 | Thursday worst S$41,193
-11.11 Mega Sale, Christmas, CNY are peak event days"""
+LG 64% S$227,248 (concentration risk) | Philips S$67,817 | Nike S$26,834 | Anker S$24,707
+Double Day S$89,029 best ROI | Mega S$75,121 | Brand Day S$68,307 | Flash Sale S$63,142
+Woodlands best S$67,353 | Jurong weakest S$44,898 (-35% gap)
+PayNow leads S$104,497 (29.5%) | ShopeePay S$92,065 | Desktop 52% vs Mobile 48%
+Wednesday best day S$62,817 | Thursday worst S$41,193 (35% gap)
+Peak weeks: W52 Christmas S$33,554 | W44 Oct S$31,646 | W48 Nov S$28,452
+Best AOV: W05 Jan S$738 | Peak vouchers: W47 Nov 64.3%
+SG event boosts: 11.11 Mega Sale 2.8x | Christmas 1.9x | CNY 1.7x"""
 
-def fmt_s(v): return f"S${v/1000:.1f}K" if v>=1000 else f"S${round(v)}"
+AI_SYSTEM = f"""You are a sharp, data-driven e-commerce analyst embedded in a Shopee Singapore seller dashboard.
+
+Your rules:
+- Answer in 3–5 sentences maximum — be direct, no filler
+- Always cite specific numbers (S$ amounts, %, dates, weeks)
+- End EVERY answer with one prioritised action the seller can take THIS WEEK, formatted as:
+  → Action: [specific, concrete step]
+- If the data doesn't contain enough info to answer, say so honestly in one sentence
+- No phrases like "Great question!", "Certainly!", or "Of course!"
+
+Full dataset context:
+{AI_CTX}"""
+
+QUICK_QS = [
+    "What's causing the Jan revenue dip?",
+    "Which campaign has the best ROI?",
+    "Top 3 growth opportunities?",
+    "Best day to run flash sales?",
+    "Why is Jurong underperforming?",
+    "How to improve the 3.6% repeat rate?",
+    "How can we reduce voucher leakage?",
+    "Which payment method should we promote?",
+    "What does the Feb 2026 forecast mean?",
+    "What's our biggest business risk right now?",
+    "Should we focus more on mobile or desktop?",
+    "How can we grow Fashion & Beauty revenue?",
+]
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def fmt_s(v):
+    return f"S${v/1000:.1f}K" if v >= 1000 else f"S${round(v)}"
+
 def badge(p):
-    if p is None or pd.isna(p): return ""
-    p=float(p); arr="↑" if p>0 else("↓" if p<0 else"→")
-    col=C["green"] if p>0 else(C["red"] if p<0 else"#64748b")
+    if p is None or pd.isna(p):
+        return ""
+    p   = float(p)
+    arr = "↑" if p > 0 else ("↓" if p < 0 else "→")
+    col = C["green"] if p > 0 else (C["red"] if p < 0 else "#64748b")
     return f'<span style="color:{col};font-weight:700;font-size:12px">{arr}{abs(p):.1f}%</span>'
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -203,7 +272,8 @@ html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;backgro
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
 section[data-testid="stSidebar"] *{color:#374151!important}
 .stSelectbox>div>div,.stMultiSelect>div>div{background:#f8fafc!important;border-color:#e2e8f0!important;color:#1e293b!important;border-radius:8px!important}
-.stButton>button{background:#2563eb!important;color:white!important;border:none!important;border-radius:8px!important;font-weight:600!important}
+.stButton>button{background:#2563eb!important;color:white!important;border:none!important;border-radius:8px!important;font-weight:600!important;transition:all .15s!important}
+.stButton>button:hover{background:#1d4ed8!important;transform:translateY(-1px)!important}
 .kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
 .kpi-val{font-size:22px;font-weight:800;margin-bottom:4px}
 .kpi-label{font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
@@ -213,10 +283,11 @@ section[data-testid="stSidebar"] *{color:#374151!important}
 .chart-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:14px}
 .chart-title{font-size:14px;font-weight:700;color:#1e293b;margin-bottom:4px}
 .chart-sub{font-size:11px;color:#9ca3af;margin-bottom:10px}
+.ai-status-ok{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#15803d;font-weight:600;margin-bottom:6px}
+.ai-status-err{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12px;color:#dc2626;font-weight:600;margin-bottom:6px}
+.action-box{background:#fffbeb;border-left:3px solid #d97706;padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;color:#92400e;font-weight:600;margin-top:10px}
 div[data-testid="stChatMessage"]{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:12px!important;margin-bottom:8px!important}
 hr{border-color:#e2e8f0!important}
-.share-box{background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:14px;padding:20px 24px;margin-bottom:20px}
-.chat-tip{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:12px}
 </style>""", unsafe_allow_html=True)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -227,63 +298,72 @@ with st.sidebar:
       <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Commerce Dashboard</div></div>
     </div>""", unsafe_allow_html=True)
 
-    view = st.selectbox("View",[
-        "📊 Overview","📅 MoM Analysis","📆 Weekly","📆 Daily Analysis",
-        "📣 Campaigns","📍 Geography","🤖 AI Analyst"
+    view = st.selectbox("View", [
+        "📊 Overview", "📅 MoM Analysis", "📆 Weekly",
+        "📆 Daily Analysis", "📣 Campaigns", "📍 Geography", "🤖 AI Analyst"
     ], label_visibility="collapsed")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Filters</p>', unsafe_allow_html=True)
 
-    actual_yms = list(actual_monthly["ym"])
-    month_filter = "All Months"
+    actual_yms     = list(actual_monthly["ym"])
+    month_filter   = "All Months"
     months_compare = actual_yms[:]
-    camp_filter = "All Campaigns"
-    city_filter = "All Cities"
-    daily_month = "All"
+    camp_filter    = "All Campaigns"
+    city_filter    = "All Cities"
+    daily_month    = "All"
 
-    if "Overview" in view:
-        month_filter = st.selectbox("Month", ["All Months"]+actual_yms)
-    if "MoM" in view:
+    if "Overview"   in view: month_filter   = st.selectbox("Month", ["All Months"] + actual_yms)
+    if "MoM"        in view:
         months_compare = st.multiselect("Compare months", actual_yms, default=actual_yms)
         if not months_compare: months_compare = actual_yms
-    if "Campaigns" in view:
-        camp_filter = st.selectbox("Campaign",["All Campaigns"]+list(campaigns_data["name"]))
-    if "Geography" in view:
-        city_filter = st.selectbox("City",["All Cities"]+list(cities_data["name"]))
-    if "Daily" in view:
-        daily_month = st.selectbox("Month",["All","Oct 2025","Nov 2025","Dec 2025","Jan 2026"])
+    if "Campaigns"  in view: camp_filter    = st.selectbox("Campaign", ["All Campaigns"] + list(campaigns_data["name"]))
+    if "Geography"  in view: city_filter    = st.selectbox("City", ["All Cities"] + list(cities_data["name"]))
+    if "Daily"      in view: daily_month    = st.selectbox("Month", ["All", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026"])
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Data Upload</p>', unsafe_allow_html=True)
-    up = st.file_uploader("CSV/Excel",type=["csv","xlsx","xls"],label_visibility="collapsed")
-    if up: st.success(f"✓ {up.name}")
+    up = st.file_uploader("CSV/Excel", type=["csv","xlsx","xls"], label_visibility="collapsed")
+    if up:
+        st.success(f"✓ {up.name}")
 
+    # ── AI Status — FIXED: proper if/else block, NOT ternary expression ───────
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">AI Status</p>', unsafe_allow_html=True)
-    st.success("✅ Gemini AI ready (free)") if get_api_key() else st.error("❌ Add GEMINI_API_KEY to Secrets")
-    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:20px">Shopee Commerce Intelligence<br>Powered by Gemini AI</p>', unsafe_allow_html=True)
+    if get_api_key():
+        st.markdown('<div class="ai-status-ok">✅ Claude AI ready</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="ai-status-err">❌ Add ANTHROPIC_API_KEY to Secrets</div>', unsafe_allow_html=True)
+        with st.expander("How to fix"):
+            st.markdown("""
+1. Streamlit Cloud → your app → **⋮ → Settings → Secrets**
+2. Add: `ANTHROPIC_API_KEY = "sk-ant-..."`
+3. Save & reboot
+4. Get key: [console.anthropic.com](https://console.anthropic.com)
+            """)
 
-# ── Filtered ──────────────────────────────────────────────────────────────────
-filt_m  = actual_monthly if month_filter=="All Months" else actual_monthly[actual_monthly["ym"]==month_filter]
-filt_c  = campaigns_data if camp_filter=="All Campaigns" else campaigns_data[campaigns_data["name"]==camp_filter]
-filt_ci = cities_data if city_filter=="All Cities" else cities_data[cities_data["name"]==city_filter]
+    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:20px">Shopee Commerce Intelligence<br>Powered by Claude AI (Anthropic)</p>', unsafe_allow_html=True)
+
+# ── Filtered slices ───────────────────────────────────────────────────────────
+filt_m  = actual_monthly if month_filter == "All Months"    else actual_monthly[actual_monthly["ym"] == month_filter]
+filt_c  = campaigns_data if camp_filter  == "All Campaigns" else campaigns_data[campaigns_data["name"] == camp_filter]
+filt_ci = cities_data    if city_filter  == "All Cities"    else cities_data[cities_data["name"] == city_filter]
 mmap    = {"Oct 2025":10,"Nov 2025":11,"Dec 2025":12,"Jan 2026":1}
-filt_d  = daily_data if daily_month=="All" else daily_data[daily_data["date"].apply(lambda x:x.month==mmap.get(daily_month,0))]
+filt_d  = daily_data if daily_month == "All" else daily_data[daily_data["date"].apply(lambda x: x.month == mmap.get(daily_month, 0))]
 tot_rev = filt_m["revenue"].sum()
 tot_ord = filt_m["orders"].sum()
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # OVERVIEW
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 if "Overview" in view:
     st.markdown('<div class="section-header">📊 Overview</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Shopee Singapore · Oct 2025 – Jan 2026 · 800 orders</div>', unsafe_allow_html=True)
 
     last = actual_monthly.iloc[-1]
-    c1,c2,c3,c4 = st.columns(4)
-    for col,icon,label,val,sub,color,pct in [
-        (c1,"💰","Total Revenue",fmt_s(tot_rev),f"{tot_ord} orders",C["blue"],last["rev_mom"]),
-        (c2,"🧾","Avg Order Value",f"S${round(tot_rev/tot_ord) if tot_ord else 0}","Revenue ÷ Orders",C["cyan"],last["aov_mom"]),
-        (c3,"👤","Rev / Customer",fmt_s(SUMMARY["revPerCust"]),"Total ÷ customers",C["violet"],None),
-        (c4,"🔁","Repeat Purchase",f"{SUMMARY['repeatRate']}%","Bought 2× or more",C["purple"],None),
+    c1, c2, c3, c4 = st.columns(4)
+    for col, icon, label, val, sub, color, pct in [
+        (c1,"💰","Total Revenue",   fmt_s(tot_rev),                              f"{tot_ord} orders",        C["blue"],   last["rev_mom"]),
+        (c2,"🧾","Avg Order Value", f"S${round(tot_rev/tot_ord) if tot_ord else 0}", "Revenue ÷ Orders",    C["cyan"],   last["aov_mom"]),
+        (c3,"👤","Rev / Customer",  fmt_s(SUMMARY["revPerCust"]),                 "Total ÷ customers",       C["violet"], None),
+        (c4,"🔁","Repeat Purchase", f"{SUMMARY['repeatRate']}%",                  "Bought 2× or more",       C["purple"], None),
     ]:
         with col:
             st.markdown(f"""<div class="kpi-card">
@@ -293,12 +373,12 @@ if "Overview" in view:
                 <div class="kpi-sub">{sub} {badge(pct)}</div>
             </div>""", unsafe_allow_html=True)
 
-    c1,c2,c3,c4 = st.columns(4)
-    for col,icon,label,val,sub,hint,color in [
-        (c1,"🚚","Avg Delivery",f"{SUMMARY['avgDelivery']}d","Order → doorstep","Target < 2d",C["cyan"]),
-        (c2,"⭐","Store Rating",f"{SUMMARY['avgRating']}★","Avg across orders","Target 4.8+",C["amber"]),
-        (c3,"🎫","Voucher Usage",f"{SUMMARY['voucherRate']}%",f"S${SUMMARY['voucherDiscount']} discounted","48.75% redeem",C["orange"]),
-        (c4,"📉","Discount Leakage",fmt_s(SUMMARY['gross']-SUMMARY['totalRev']),f"Gross {fmt_s(SUMMARY['gross'])}","Voucher cost",C["red"]),
+    c1, c2, c3, c4 = st.columns(4)
+    for col, icon, label, val, sub, hint, color in [
+        (c1,"🚚","Avg Delivery",     f"{SUMMARY['avgDelivery']}d",                    "Order → doorstep",                      "Target < 2d",   C["cyan"]),
+        (c2,"⭐","Store Rating",      f"{SUMMARY['avgRating']}★",                      "Avg across orders",                     "Target 4.8+",   C["amber"]),
+        (c3,"🎫","Voucher Usage",    f"{SUMMARY['voucherRate']}%",                    f"S${SUMMARY['voucherDiscount']} discounted","48.75% redeem",C["orange"]),
+        (c4,"📉","Discount Leakage", fmt_s(SUMMARY["gross"]-SUMMARY["totalRev"]),     f"Gross {fmt_s(SUMMARY['gross'])}",       "Voucher cost",  C["red"]),
     ]:
         with col:
             st.markdown(f"""<div class="kpi-card">
@@ -309,52 +389,53 @@ if "Overview" in view:
                 <div style="font-size:10px;color:{color};margin-top:5px;font-weight:600">{hint}</div>
             </div>""", unsafe_allow_html=True)
 
-    col_l,col_r = st.columns([3,2])
+    col_l, col_r = st.columns([3, 2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Revenue Trend + Feb 2026 Forecast</div>', unsafe_allow_html=True)
-        mkey = st.radio("m",["revenue","orders","aov"],horizontal=True,label_visibility="collapsed",
-                        format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV"}[x])
+        mkey = st.radio("m", ["revenue","orders","aov"], horizontal=True, label_visibility="collapsed",
+                        format_func=lambda x: {"revenue":"Revenue","orders":"Orders","aov":"AOV"}[x])
         act  = actual_monthly
-        fore = monthly_data[monthly_data["is_forecast"]==True]
+        fore = monthly_data[monthly_data["is_forecast"] == True]
         fig  = go.Figure()
-        fig.add_trace(go.Scatter(x=act["ym"],y=act[mkey],mode="lines+markers",name="Actual",
-            line=dict(color=C["blue"],width=2.5),marker=dict(size=7,color=C["blue"]),
-            fill="tozeroy",fillcolor="rgba(37,99,235,0.08)"))
+        fig.add_trace(go.Scatter(x=act["ym"], y=act[mkey], mode="lines+markers", name="Actual",
+            line=dict(color=C["blue"], width=2.5), marker=dict(size=7, color=C["blue"]),
+            fill="tozeroy", fillcolor="rgba(37,99,235,0.08)"))
         fig.add_trace(go.Scatter(
             x=[act["ym"].iloc[-1], fore["ym"].iloc[0]],
             y=[act[mkey].iloc[-1], fore[mkey].iloc[0]],
-            mode="lines",line=dict(color=C["amber"],width=2,dash="dot"),showlegend=False))
-        fig.add_trace(go.Scatter(x=fore["ym"],y=fore[mkey],mode="markers",name="Forecast",
-            marker=dict(size=10,color=C["amber"],symbol="diamond")))
-        fig.update_layout(**PL(height=210,legend=True))
-        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+            mode="lines", line=dict(color=C["amber"], width=2, dash="dot"), showlegend=False))
+        fig.add_trace(go.Scatter(x=fore["ym"], y=fore[mkey], mode="markers", name="Forecast",
+            marker=dict(size=10, color=C["amber"], symbol="diamond")))
+        fig.update_layout(**PL(height=210, legend=True))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
         st.markdown('<div class="chart-card"><div class="chart-title">Category Mix</div><div class="chart-sub">Revenue share</div>', unsafe_allow_html=True)
-        fig2 = go.Figure(go.Pie(labels=categories_data["name"],values=categories_data["revenue"],
-            marker_colors=categories_data["color"].tolist(),hole=0.55,
-            textinfo="label+percent",textfont_size=11,textfont_color="#374151"))
+        fig2 = go.Figure(go.Pie(
+            labels=categories_data["name"], values=categories_data["revenue"],
+            marker_colors=categories_data["color"].tolist(), hole=0.55,
+            textinfo="label+percent", textfont_size=11, textfont_color="#374151"))
         fig2.update_layout(**PL(height=175))
-        st.plotly_chart(fig2,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
-    c1,c2,c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown('<div class="chart-card"><div class="chart-title">Best Day to Sell</div>', unsafe_allow_html=True)
-        dc = [C["blue"] if d=="Wed" else "#bfdbfe" for d in dow_data["day"]]
-        fig3 = go.Figure(go.Bar(x=dow_data["day"],y=dow_data["revenue"],marker_color=dc,marker_line_width=0))
+        dc   = [C["blue"] if d == "Wed" else "#bfdbfe" for d in dow_data["day"]]
+        fig3 = go.Figure(go.Bar(x=dow_data["day"], y=dow_data["revenue"], marker_color=dc, marker_line_width=0))
         fig3.update_layout(**PL(height=130))
-        st.plotly_chart(fig3,use_container_width=True,config={"displayModeBar":False})
-        ca,cb = st.columns(2)
-        ca.markdown('<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:#2563eb;font-weight:700">🏆 Best</div><div style="font-size:12px;font-weight:800">Wed</div><div style="font-size:10px;color:#64748b">S$62,817</div></div>',unsafe_allow_html=True)
-        cb.markdown('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:#dc2626;font-weight:700">↓ Worst</div><div style="font-size:12px;font-weight:800">Thu</div><div style="font-size:10px;color:#64748b">S$41,193</div></div>',unsafe_allow_html=True)
+        st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
+        ca, cb = st.columns(2)
+        ca.markdown('<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:#2563eb;font-weight:700">🏆 Best</div><div style="font-size:12px;font-weight:800">Wed</div><div style="font-size:10px;color:#64748b">S$62,817</div></div>', unsafe_allow_html=True)
+        cb.markdown('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:#dc2626;font-weight:700">↓ Worst</div><div style="font-size:12px;font-weight:800">Thu</div><div style="font-size:10px;color:#64748b">S$41,193</div></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with c2:
         st.markdown('<div class="chart-card"><div class="chart-title">Top Brands</div><div class="chart-sub">LG dominates 64%</div>', unsafe_allow_html=True)
-        for i,row in brands_data.iterrows():
-            pb = int((row["revenue"]/227248)*100)
+        for i, row in brands_data.iterrows():
+            pb = int((row["revenue"] / 227248) * 100)
             st.markdown(f"""<div style="margin-bottom:9px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:3px">
                     <span style="font-size:12px;color:#374151;font-weight:{'700' if i==0 else '400'}">{row['name']} {'🏆' if i==0 else ''}</span>
@@ -366,8 +447,8 @@ if "Overview" in view:
 
     with c3:
         st.markdown('<div class="chart-card"><div class="chart-title">Payment Split</div>', unsafe_allow_html=True)
-        for _,row in payments_data.iterrows():
-            sh = round((row["value"]/353977)*100)
+        for _, row in payments_data.iterrows():
+            sh = round((row["value"] / 353977) * 100)
             st.markdown(f"""<div style="margin-bottom:10px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:3px">
                     <span style="font-size:11px;color:#374151">{row['name']}</span>
@@ -378,15 +459,15 @@ if "Overview" in view:
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # MOM
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif "MoM" in view:
     st.markdown('<div class="section-header">📅 Month-over-Month Analysis</div>', unsafe_allow_html=True)
-    show_fc = st.toggle("Include Feb 2026 Forecast",value=True)
-    comp = monthly_data[monthly_data["ym"].isin(months_compare)]
+    show_fc = st.toggle("Include Feb 2026 Forecast", value=True)
+    comp    = monthly_data[monthly_data["ym"].isin(months_compare)]
     if show_fc:
-        comp = pd.concat([comp, monthly_data[monthly_data["is_forecast"]==True]], ignore_index=True)
+        comp = pd.concat([comp, monthly_data[monthly_data["is_forecast"] == True]], ignore_index=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">Month Comparison</div>', unsafe_allow_html=True)
     disp = comp.copy()
@@ -397,76 +478,78 @@ elif "MoM" in view:
     disp["AOV"]     = disp["aov"].apply(lambda x: f"S${x}")
     disp["Voucher%"]= disp["voucher_rate"].apply(lambda x: f"{x}%")
     disp["Type"]    = disp["is_forecast"].apply(lambda x: "📊 Forecast" if x else "✅ Actual")
-    st.dataframe(disp[["ym","Type","Revenue","Rev MoM","Orders","Ord MoM","AOV","Voucher%"]].rename(columns={"ym":"Month"}),
-                 use_container_width=True, hide_index=True)
+    st.dataframe(
+        disp[["ym","Type","Revenue","Rev MoM","Orders","Ord MoM","AOV","Voucher%"]].rename(columns={"ym":"Month"}),
+        use_container_width=True, hide_index=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    for (k1,l1,c1c),(k2,l2,c2c) in [
-        (("revenue","Revenue (S$)",C["blue"]),("orders","Orders",C["cyan"])),
-        (("aov","AOV (S$)",C["violet"]),("voucher_rate","Voucher %",C["amber"])),
+    for (k1,l1,c1c), (k2,l2,c2c) in [
+        (("revenue","Revenue (S$)",C["blue"]),   ("orders","Orders",C["cyan"])),
+        (("aov","AOV (S$)",C["violet"]),          ("voucher_rate","Voucher %",C["amber"])),
     ]:
-        col1,col2 = st.columns(2)
-        for col,key,lbl,color in [(col1,k1,l1,c1c),(col2,k2,l2,c2c)]:
+        col1, col2 = st.columns(2)
+        for col, key, lbl, color in [(col1,k1,l1,c1c),(col2,k2,l2,c2c)]:
             with col:
                 st.markdown(f'<div class="chart-card"><div class="chart-title">{lbl} by Month</div>', unsafe_allow_html=True)
-                bc = [C["amber"] if r["is_forecast"] else color for _,r in comp.iterrows()]
-                fig = go.Figure(go.Bar(x=comp["ym"],y=comp[key],marker_color=bc,marker_line_width=0))
+                bc  = [C["amber"] if r["is_forecast"] else color for _, r in comp.iterrows()]
+                fig = go.Figure(go.Bar(x=comp["ym"], y=comp[key], marker_color=bc, marker_line_width=0))
                 fig.update_layout(**PL(height=180))
-                st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
                 st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">Revenue MoM % Change</div>', unsafe_allow_html=True)
     sub = comp.dropna(subset=["rev_mom"])
     bc  = [C["amber"] if r["is_forecast"] else (C["blue"] if v>=0 else C["red"]) for v,(_,r) in zip(sub["rev_mom"],sub.iterrows())]
-    fig = go.Figure(go.Bar(x=sub["ym"],y=sub["rev_mom"],marker_color=bc,marker_line_width=0,
+    fig = go.Figure(go.Bar(x=sub["ym"], y=sub["rev_mom"], marker_color=bc, marker_line_width=0,
                            text=sub["rev_mom"].apply(lambda v:f"{'↑' if v>0 else '↓'}{abs(v):.1f}%"),
-                           textposition="outside",textfont=dict(size=11,color="#374151")))
-    fig.add_hline(y=0,line_color="#e2e8f0")
+                           textposition="outside", textfont=dict(size=11, color="#374151")))
+    fig.add_hline(y=0, line_color="#e2e8f0")
     fig.update_layout(**PL(height=180))
-    st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # WEEKLY
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif "Weekly" in view:
     st.markdown('<div class="section-header">📆 Weekly Analysis</div>', unsafe_allow_html=True)
-    wkey = st.radio("w",["revenue","orders","aov","voucher_rate"],horizontal=True,label_visibility="collapsed",
-                    format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
+    wkey = st.radio("w", ["revenue","orders","aov","voucher_rate"], horizontal=True, label_visibility="collapsed",
+                    format_func=lambda x: {"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
+
     st.markdown('<div class="chart-card"><div class="chart-title">Weekly Trend</div>', unsafe_allow_html=True)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=weekly_data["wk"],y=weekly_data[wkey],mode="lines",
-        line=dict(color=C["blue"],width=2),fill="tozeroy",fillcolor="rgba(37,99,235,0.07)"))
+    fig.add_trace(go.Scatter(x=weekly_data["wk"], y=weekly_data[wkey], mode="lines",
+        line=dict(color=C["blue"],width=2), fill="tozeroy", fillcolor="rgba(37,99,235,0.07)"))
     fig.update_layout(**PL(height=200))
-    st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-    col_l,col_r = st.columns([3,2])
+    col_l, col_r = st.columns([3, 2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">WoW Revenue %</div>', unsafe_allow_html=True)
-        wow = weekly_data.dropna(subset=["rev_wow"])
-        fig2 = go.Figure(go.Bar(x=wow["wk"],y=wow["rev_wow"],
-            marker_color=[C["blue"] if v>=0 else C["red"] for v in wow["rev_wow"]],marker_line_width=0))
-        fig2.add_hline(y=0,line_color="#e2e8f0")
+        wow  = weekly_data.dropna(subset=["rev_wow"])
+        fig2 = go.Figure(go.Bar(x=wow["wk"], y=wow["rev_wow"],
+            marker_color=[C["blue"] if v>=0 else C["red"] for v in wow["rev_wow"]], marker_line_width=0))
+        fig2.add_hline(y=0, line_color="#e2e8f0")
         fig2.update_layout(**PL(height=190))
-        st.plotly_chart(fig2,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
     with col_r:
         st.markdown('<div class="chart-card"><div class="chart-title">Last 8 Weeks</div>', unsafe_allow_html=True)
         l8 = weekly_data.tail(8).copy()
         l8["Revenue"] = l8["revenue"].apply(fmt_s)
-        l8["WoW"] = l8["rev_wow"].apply(lambda x:f"{'↑' if x>0 else '↓'}{abs(x):.1f}%" if pd.notna(x) else "—")
-        l8["AOV"] = l8["aov"].apply(lambda x:f"S${x}")
+        l8["WoW"]     = l8["rev_wow"].apply(lambda x: f"{'↑' if x>0 else '↓'}{abs(x):.1f}%" if pd.notna(x) else "—")
+        l8["AOV"]     = l8["aov"].apply(lambda x: f"S${x}")
         st.dataframe(l8[["wk","Revenue","WoW","orders","AOV"]].rename(columns={"wk":"Week","orders":"Orders"}),
-                     use_container_width=True,hide_index=True,height=225)
+                     use_container_width=True, hide_index=True, height=225)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    c1,c2,c3,c4 = st.columns(4)
-    for col,icon,lbl,val,sub,color in [
-        (c1,"🏆","Peak Week","W52 Dec 22","S$33,554 · Christmas",C["blue"]),
-        (c2,"📦","Most Orders","W43 Oct 20","62 orders",C["cyan"]),
-        (c3,"💎","Best AOV","W05 Jan 26","S$738 avg",C["violet"]),
-        (c4,"🎫","Peak Vouchers","W47 Nov 17","64.3% redeem",C["amber"]),
+    c1, c2, c3, c4 = st.columns(4)
+    for col, icon, lbl, val, sub, color in [
+        (c1,"🏆","Peak Week",    "W52 Dec 22","S$33,554 · Christmas",C["blue"]),
+        (c2,"📦","Most Orders",  "W43 Oct 20","62 orders",            C["cyan"]),
+        (c3,"💎","Best AOV",     "W05 Jan 26","S$738 avg",            C["violet"]),
+        (c4,"🎫","Peak Vouchers","W47 Nov 17","64.3% redeem",         C["amber"]),
     ]:
         with col:
             st.markdown(f"""<div class="kpi-card" style="text-align:center">
@@ -476,41 +559,41 @@ elif "Weekly" in view:
                 <div style="font-size:11px;color:#64748b">{sub}</div>
             </div>""", unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # DAILY
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif "Daily" in view:
     st.markdown('<div class="section-header">📆 Daily Analysis</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Day-by-day performance · Singapore holidays & special days highlighted</div>', unsafe_allow_html=True)
 
-    dkey = st.radio("dk",["revenue","orders","aov","voucher_rate"],horizontal=True,label_visibility="collapsed",
-                    format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
+    dkey = st.radio("dk", ["revenue","orders","aov","voucher_rate"], horizontal=True, label_visibility="collapsed",
+                    format_func=lambda x: {"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
 
-    ds = filt_d.sort_values("date")
-    date_strs = ds["date"].apply(lambda d:d.strftime("%d %b"))
+    ds        = filt_d.sort_values("date")
+    date_strs = ds["date"].apply(lambda d: d.strftime("%d %b"))
 
     st.markdown('<div class="chart-card"><div class="chart-title">Daily Trend with SG Events</div><div class="chart-sub">🔴 Red diamonds = Singapore public holidays &amp; campaigns</div>', unsafe_allow_html=True)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=date_strs,y=ds[dkey],mode="lines",
-        line=dict(color=C["blue"],width=1.5),fill="tozeroy",fillcolor="rgba(37,99,235,0.06)",name="Daily"))
-    ev = ds[ds["event"]!=""]
+    fig.add_trace(go.Scatter(x=date_strs, y=ds[dkey], mode="lines",
+        line=dict(color=C["blue"],width=1.5), fill="tozeroy", fillcolor="rgba(37,99,235,0.06)", name="Daily"))
+    ev = ds[ds["event"] != ""]
     if not ev.empty:
         fig.add_trace(go.Scatter(
-            x=ev["date"].apply(lambda d:d.strftime("%d %b")),y=ev[dkey],
-            mode="markers",marker=dict(size=12,color=C["red"],symbol="diamond"),
-            name="SG Events",hovertext=ev["event"]))
-    fig.update_layout(**PL(height=280,legend=True))
-    st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+            x=ev["date"].apply(lambda d: d.strftime("%d %b")), y=ev[dkey],
+            mode="markers", marker=dict(size=12, color=C["red"], symbol="diamond"),
+            name="SG Events", hovertext=ev["event"]))
+    fig.update_layout(**PL(height=280, legend=True))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-    c1,c2,c3,c4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns(4)
     bd = ds.loc[ds["revenue"].idxmax()]
     wd = ds.loc[ds["revenue"].idxmin()]
-    for col,icon,lbl,val,sub,color in [
-        (c1,"🏆","Best Day",bd["date"].strftime("%d %b"),f"{fmt_s(bd['revenue'])} · {bd['event'] or bd['weekday']}",C["blue"]),
-        (c2,"📉","Worst Day",wd["date"].strftime("%d %b"),f"{fmt_s(wd['revenue'])} · {wd['weekday']}",C["red"]),
-        (c3,"📊","Avg Daily",fmt_s(int(ds["revenue"].mean())),f"Over {len(ds)} days",C["cyan"]),
-        (c4,"🎉","SG Events",str((ds["event"]!="").sum()),"Special days in period",C["amber"]),
+    for col, icon, lbl, val, sub, color in [
+        (c1,"🏆","Best Day",  bd["date"].strftime("%d %b"), f"{fmt_s(bd['revenue'])} · {bd['event'] or bd['weekday']}", C["blue"]),
+        (c2,"📉","Worst Day", wd["date"].strftime("%d %b"), f"{fmt_s(wd['revenue'])} · {wd['weekday']}",               C["red"]),
+        (c3,"📊","Avg Daily", fmt_s(int(ds["revenue"].mean())),  f"Over {len(ds)} days",                               C["cyan"]),
+        (c4,"🎉","SG Events", str((ds["event"]!="").sum()),      "Special days in period",                             C["amber"]),
     ]:
         with col:
             st.markdown(f"""<div class="kpi-card">
@@ -521,12 +604,12 @@ elif "Daily" in view:
             </div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">🇸🇬 Singapore Events Impact</div><div class="chart-sub">Revenue vs daily average</div>', unsafe_allow_html=True)
-    ev_rows = ds[ds["event"]!=""].copy()
-    avg = ds["revenue"].mean()
+    ev_rows = ds[ds["event"] != ""].copy()
+    avg     = ds["revenue"].mean()
     if not ev_rows.empty:
-        for _,row in ev_rows.iterrows():
-            va = ((row["revenue"]-avg)/avg*100)
-            vc = C["green"] if va>0 else C["red"]
+        for _, row in ev_rows.iterrows():
+            va = (row["revenue"] - avg) / avg * 100
+            vc = C["green"] if va > 0 else C["red"]
             st.markdown(f"""<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #f1f5f9">
                 <div style="width:60px;font-size:11px;color:#9ca3af;flex-shrink:0">{row['date'].strftime('%d %b')}</div>
                 <div style="flex:1"><span style="font-size:12px;font-weight:600;color:#1e293b">{row['event']}</span>
@@ -539,36 +622,37 @@ elif "Daily" in view:
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">Daily Detail Table</div>', unsafe_allow_html=True)
-    tbl = ds.copy()
-    tbl["Date"]    = tbl["date"].apply(lambda d:d.strftime("%d %b %Y"))
+    tbl            = ds.copy()
+    tbl["Date"]    = tbl["date"].apply(lambda d: d.strftime("%d %b %Y"))
     tbl["Day"]     = tbl["weekday"]
     tbl["Revenue"] = tbl["revenue"].apply(fmt_s)
-    tbl["DoD %"]   = tbl["rev_dod"].apply(lambda x:f"{'↑' if x>0 else '↓'}{abs(x):.1f}%" if pd.notna(x) else "—")
+    tbl["DoD %"]   = tbl["rev_dod"].apply(lambda x: f"{'↑' if x>0 else '↓'}{abs(x):.1f}%" if pd.notna(x) else "—")
     tbl["Orders"]  = tbl["orders"]
-    tbl["AOV"]     = tbl["aov"].apply(lambda x:f"S${x}")
+    tbl["AOV"]     = tbl["aov"].apply(lambda x: f"S${x}")
     tbl["Event"]   = tbl["event"]
     st.dataframe(tbl[["Date","Day","Revenue","DoD %","Orders","AOV","Event"]],
-                 use_container_width=True,hide_index=True,height=300)
+                 use_container_width=True, hide_index=True, height=300)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # CAMPAIGNS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif "Campaigns" in view:
     st.markdown('<div class="section-header">📣 Campaigns & Channels</div>', unsafe_allow_html=True)
-    col_l,col_r = st.columns(2)
+    col_l, col_r = st.columns(2)
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Campaign Revenue</div>', unsafe_allow_html=True)
-        fig = go.Figure(go.Bar(x=filt_c["name"],y=filt_c["revenue"],
-            marker_color=filt_c["color"].tolist(),marker_line_width=0))
+        fig = go.Figure(go.Bar(x=filt_c["name"], y=filt_c["revenue"],
+            marker_color=filt_c["color"].tolist(), marker_line_width=0))
         fig.update_layout(**PL(height=210))
-        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
     with col_r:
         st.markdown('<div class="chart-card"><div class="chart-title">Campaign AOV Efficiency</div>', unsafe_allow_html=True)
-        ma = (campaigns_data["revenue"]/campaigns_data["orders"]).max()
-        for _,row in filt_c.iterrows():
-            aov=round(row["revenue"]/row["orders"]); pct=int((aov/ma)*100)
+        ma = (campaigns_data["revenue"] / campaigns_data["orders"]).max()
+        for _, row in filt_c.iterrows():
+            aov = round(row["revenue"] / row["orders"])
+            pct = int((aov / ma) * 100)
             st.markdown(f"""<div style="margin-bottom:12px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:4px">
                     <span style="font-size:12px;color:#374151;font-weight:600">{row['name']}</span>
@@ -579,13 +663,13 @@ elif "Campaigns" in view:
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">Voucher Impact</div>', unsafe_allow_html=True)
-    vc1,vc2,vc3,vc4,vc5 = st.columns(5)
-    for col,lbl,val,sub,color in [
-        (vc1,"Orders w/ Voucher","390/800","48.75% rate",C["amber"]),
-        (vc2,"Avg Discount","S$10","per voucher",C["blue"]),
-        (vc3,"Total Discount","S$3,890","from gross",C["red"]),
-        (vc4,"Gross Revenue","S$357,867","before disc",C["cyan"]),
-        (vc5,"Net Revenue","S$353,977","after disc",C["green"]),
+    vc1, vc2, vc3, vc4, vc5 = st.columns(5)
+    for col, lbl, val, sub, color in [
+        (vc1,"Orders w/ Voucher","390/800",    "48.75% rate", C["amber"]),
+        (vc2,"Avg Discount",      "S$10",       "per voucher", C["blue"]),
+        (vc3,"Total Discount",    "S$3,890",    "from gross",  C["red"]),
+        (vc4,"Gross Revenue",     "S$357,867",  "before disc", C["cyan"]),
+        (vc5,"Net Revenue",       "S$353,977",  "after disc",  C["green"]),
     ]:
         with col:
             st.markdown(f"""<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:13px;text-align:center">
@@ -595,10 +679,13 @@ elif "Campaigns" in view:
             </div>""", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    col_l,col_r = st.columns([1,2])
+    col_l, col_r = st.columns([1, 2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Device Split</div>', unsafe_allow_html=True)
-        for name,rev,orders,pct,c in [("Desktop",183998,422,52,C["blue"]),("Mobile",169979,378,48,C["cyan"])]:
+        for name, rev, orders, pct, c in [
+            ("Desktop",183998,422,52,C["blue"]),
+            ("Mobile", 169979,378,48,C["cyan"]),
+        ]:
             st.markdown(f"""<div style="margin-bottom:14px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:4px">
                     <span style="font-size:12px;color:#374151">{name}</span>
@@ -612,34 +699,38 @@ elif "Campaigns" in view:
     with col_r:
         st.markdown('<div class="chart-card"><div class="chart-title">Monthly Voucher Rate Trend</div>', unsafe_allow_html=True)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=actual_monthly["month"],y=actual_monthly["voucher_rate"],
-            mode="lines+markers",line=dict(color=C["amber"],width=2.5),marker=dict(size=7,color=C["amber"])))
-        fig.add_hline(y=48.75,line_dash="dash",line_color="#d1d5db",
-                      annotation_text="Avg 48.75%",annotation_font_color="#9ca3af")
-        fig.update_layout(**PL(height=210, yaxis=dict(showgrid=True,gridcolor="rgba(0,0,0,0.05)",zeroline=False,tickfont=dict(color="#6b7280",size=10),range=[35,65])))
-        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+        fig.add_trace(go.Scatter(x=actual_monthly["month"], y=actual_monthly["voucher_rate"],
+            mode="lines+markers", line=dict(color=C["amber"], width=2.5), marker=dict(size=7, color=C["amber"])))
+        fig.add_hline(y=48.75, line_dash="dash", line_color="#d1d5db",
+                      annotation_text="Avg 48.75%", annotation_font_color="#9ca3af")
+        fig.update_layout(**PL(height=210, yaxis=dict(
+            showgrid=True, gridcolor="rgba(0,0,0,0.05)", zeroline=False,
+            tickfont=dict(color="#6b7280", size=10), range=[35,65])))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # GEOGRAPHY
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif "Geography" in view:
     st.markdown('<div class="section-header">📍 Geographic Performance</div>', unsafe_allow_html=True)
-    col_l,col_r = st.columns([3,2])
+    col_l, col_r = st.columns([3, 2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Revenue by District</div>', unsafe_allow_html=True)
-        bc = [C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else f"rgba(37,99,235,{0.75-i*0.09})") for i in range(len(filt_ci))]
-        fig = go.Figure(go.Bar(y=filt_ci["name"],x=filt_ci["revenue"],
-            orientation="h",marker_color=bc,marker_line_width=0))
-        fig.update_layout(**PL(height=250, xaxis=dict(showgrid=False,zeroline=False,tickfont=dict(color="#6b7280",size=10),tickprefix="$",tickformat=".0s")))
-        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+        bc  = [C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else f"rgba(37,99,235,{0.75-i*0.09})") for i in range(len(filt_ci))]
+        fig = go.Figure(go.Bar(y=filt_ci["name"], x=filt_ci["revenue"],
+            orientation="h", marker_color=bc, marker_line_width=0))
+        fig.update_layout(**PL(height=250, xaxis=dict(
+            showgrid=False, zeroline=False, tickfont=dict(color="#6b7280", size=10),
+            tickprefix="$", tickformat=".0s")))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
     with col_r:
         st.markdown('<div class="chart-card"><div class="chart-title">City Rankings</div>', unsafe_allow_html=True)
-        for i,row in filt_ci.reset_index(drop=True).iterrows():
-            nc = C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else "#9ca3af")
-            rc = C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else "#374151")
-            aov = round(row["revenue"]/row["orders"])
+        for i, row in filt_ci.reset_index(drop=True).iterrows():
+            nc  = C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else "#9ca3af")
+            rc  = C["blue"] if i==0 else (C["red"] if i==len(filt_ci)-1 else "#374151")
+            aov = round(row["revenue"] / row["orders"])
             st.markdown(f"""<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
                 <div style="width:24px;height:24px;border-radius:7px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:{nc};flex-shrink:0">{i+1}</div>
                 <div style="flex:1">
@@ -654,92 +745,105 @@ elif "Geography" in view:
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="chart-card"><div class="chart-title">Revenue vs Orders by City</div>', unsafe_allow_html=True)
-    ca,cb = st.columns(2)
+    ca, cb = st.columns(2)
     with ca:
-        fig_a = go.Figure(go.Bar(x=filt_ci["name"],y=filt_ci["revenue"],
-            marker_color=C["blue"],marker_line_width=0))
+        fig_a = go.Figure(go.Bar(x=filt_ci["name"], y=filt_ci["revenue"], marker_color=C["blue"], marker_line_width=0))
         fig_a.update_layout(**PL(height=180))
-        st.plotly_chart(fig_a,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False})
     with cb:
-        fig_b = go.Figure(go.Bar(x=filt_ci["name"],y=filt_ci["orders"],
-            marker_color=C["cyan"],marker_line_width=0))
+        fig_b = go.Figure(go.Bar(x=filt_ci["name"], y=filt_ci["orders"], marker_color=C["cyan"], marker_line_width=0))
         fig_b.update_layout(**PL(height=180))
-        st.plotly_chart(fig_b,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig_b, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# AI ANALYST
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# AI ANALYST — Claude-powered, conversation memory, action highlights
+# ══════════════════════════════════════════════════════════════════════════════
 elif "AI Analyst" in view:
     st.markdown('<div class="section-header">🤖 AI Analyst</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Ask anything · Powered by Gemini AI (free)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Powered by Claude AI (Anthropic) · Full dataset context · Conversation memory</div>', unsafe_allow_html=True)
 
-    st.markdown("""<div class="share-box">
-        <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px">🔗 Share this dashboard</div>
-        <div style="font-size:13px;color:#374151;margin-bottom:10px">Your app URL is your shareable link — anyone with it can view.<br>
-        To restrict access: <b>Manage app → Settings → Sharing → Only specific people</b> and add their emails.</div>
-        <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;color:#1d4ed8">
-            https://ai-commerce-intelligence-fnb7bxjcdyz5fa6tx8mg9z.streamlit.app</div>
-    </div>""", unsafe_allow_html=True)
+    api_key = get_api_key()
 
-    st.markdown('<div class="chat-tip">💡 <b>Tip:</b> Gemini free tier auto-retries across 3 models. Ask one question at a time for best results.</div>', unsafe_allow_html=True)
+    # Block the page if no key — with clear instructions
+    if not api_key:
+        st.error("⚠️ **ANTHROPIC_API_KEY not found.** The AI Analyst needs this to work.")
+        st.markdown("""
+**To fix in 2 minutes:**
+1. Go to **Streamlit Cloud** → your app → **⋮ menu → Settings → Secrets**
+2. Add this line:  `ANTHROPIC_API_KEY = "sk-ant-..."`
+3. Click **Save** — the app will reboot automatically
+4. Get a free key at [console.anthropic.com](https://console.anthropic.com)
+        """)
+        st.stop()
 
-    QUICK_QS = [
-        "What's causing the Jan revenue dip?","Which campaign has the best ROI?",
-        "Top 3 growth opportunities?","Best day to run flash sales?",
-        "Why is Jurong underperforming?","How to improve repeat rate?",
-        "How can we reduce voucher leakage?","Which payment method to promote?",
-        "What does the Feb 2026 forecast look like?",
-    ]
-
+    # Init conversation history
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = [
-            {"role":"assistant","content":"👋 Hi! I'm your Shopee analyst. Ask me anything — revenue, campaigns, cities, forecasts, SG events and more!"}
-        ]
+        st.session_state.chat_history = [{
+            "role": "assistant",
+            "content": "👋 Hi! I'm your Shopee Commerce Analyst, powered by Claude AI.\n\nI know your full dataset — 800 orders, Oct 2025–Jan 2026, all KPIs, campaigns, cities, and weekly trends.\n\nAsk me anything below, or pick a quick question to get started."
+        }]
 
-    st.markdown("**Quick questions:**")
+    # Quick question buttons (3-column grid)
+    st.markdown("**Quick questions — click any to ask instantly:**")
     cols = st.columns(3)
-    for i,q in enumerate(QUICK_QS):
-        if cols[i%3].button(q,key=f"qb_{i}"):
-            st.session_state._pending = q
-    st.markdown("---")
+    for i, q in enumerate(QUICK_QS):
+        if cols[i % 3].button(q, key=f"qb_{i}", use_container_width=True):
+            st.session_state._pending_q = q
+    st.divider()
 
+    # Render existing conversation
     for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+        role = msg["role"]
+        with st.chat_message(role, avatar="🤖" if role == "assistant" else None):
+            content = msg["content"]
+            # Highlight the action line in amber if present
+            if role == "assistant" and "→ Action:" in content:
+                parts = content.split("→ Action:", 1)
+                st.write(parts[0].strip())
+                st.markdown(f'<div class="action-box">→ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
+            else:
+                st.write(content)
 
-    if len(st.session_state.chat_history)>1:
-        if st.button("🗑️ Clear chat"):
+    # Clear chat button
+    if len(st.session_state.chat_history) > 1:
+        if st.button("🗑️ Clear conversation", type="secondary"):
             st.session_state.chat_history = [st.session_state.chat_history[0]]
             st.rerun()
 
+    # Resolve prompt — typed input or pending quick question
     prompt = st.chat_input("Ask about your Shopee data…")
-    if not prompt and hasattr(st.session_state,"_pending"):
-        prompt = st.session_state._pending
-        del st.session_state._pending
+    if not prompt and hasattr(st.session_state, "_pending_q"):
+        prompt = st.session_state._pending_q
+        del st.session_state._pending_q
 
     if prompt:
-        last_u = next((m["content"] for m in reversed(st.session_state.chat_history) if m["role"]=="user"),None)
-        if prompt != last_u:
-            st.session_state.chat_history.append({"role":"user","content":prompt})
-            with st.chat_message("user"): st.write(prompt)
+        # Prevent duplicate user messages on rerun
+        last_user = next(
+            (m["content"] for m in reversed(st.session_state.chat_history) if m["role"] == "user"),
+            None
+        )
+        if prompt != last_user:
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.write(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner("Analysing…"):
-                ak = get_api_key()
-                if not ak:
-                    reply = "⚠️ Gemini API key not found. Add GEMINI_API_KEY to Streamlit Cloud → Settings → Secrets."
+            with st.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Analysing your data…"):
+                    # Pass full history (user + assistant turns) to Claude
+                    api_history = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.chat_history
+                        if m["role"] in ("user", "assistant")
+                    ]
+                    reply = call_claude(api_key, api_history, AI_SYSTEM)
+
+                # Render with action highlight
+                if "→ Action:" in reply:
+                    parts = reply.split("→ Action:", 1)
+                    st.write(parts[0].strip())
+                    st.markdown(f'<div class="action-box">→ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
                 else:
-                    try:
-                        sp = ("You are a sharp Shopee Singapore e-commerce analyst. "
-                              "Be concise — max 4 sentences. Use exact numbers. "
-                              "End with 1 specific actionable recommendation.\n\nData:\n"+AI_CTX)
-                        hist = [{"role":m["role"],"content":m["content"]}
-                                for m in st.session_state.chat_history if m["role"] in ("user","assistant")]
-                        reply = call_gemini(ak,hist,sp)
-                    except requests.exceptions.HTTPError as e:
-                        reply = f"⏳ Rate limit ({e.response.status_code}). Wait 30s and try again."
-                    except Exception as e:
-                        reply = f"❌ Error: {str(e)}"
-            st.write(reply)
-            st.session_state.chat_history.append({"role":"assistant","content":reply})
+                    st.write(reply)
+
+            st.session_state.chat_history.append({"role": "assistant", "content": reply})
