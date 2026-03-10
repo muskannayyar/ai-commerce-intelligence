@@ -209,7 +209,7 @@ with st.sidebar:
 
     view = st.selectbox("View", [
         "📊 Overview","📅 MoM Analysis","📆 Weekly",
-        "📆 Daily Analysis","📣 Campaigns","📍 Geography"
+        "📆 Daily Analysis","📣 Campaigns","📍 Geography","🎯 Scenario Planning"
     ], label_visibility="collapsed")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Filters</p>', unsafe_allow_html=True)
@@ -598,7 +598,234 @@ elif "Geography" in view:
         st.plotly_chart(fig_b,use_container_width=True,config={"displayModeBar":False})
     st.markdown('</div>',unsafe_allow_html=True)
 
+
+
 # ══════════════════════════════════════════════════════════════════════════════
+# SCENARIO PLANNING
+# ══════════════════════════════════════════════════════════════════════════════
+elif "Scenario" in view:
+    st.markdown('<div class="section-header">🎯 Scenario Planning</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Adjust business levers and project revenue outcomes for the next 6 months</div>', unsafe_allow_html=True)
+
+    # ── Base metrics ──────────────────────────────────────────────────────────
+    BASE_MONTHLY_REV  = 88494
+    BASE_ORDERS       = 200
+    BASE_AOV          = 442
+    BASE_MONTHS       = ["Feb","Mar","Apr","May","Jun","Jul"]
+
+    # ── Levers ────────────────────────────────────────────────────────────────
+    st.markdown('<div class="chart-card"><div class="chart-title">📐 Adjust Business Levers</div><div class="chart-sub">Drag sliders — projections update instantly</div>', unsafe_allow_html=True)
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("**📦 Volume & Growth**")
+        order_growth  = st.slider("Monthly order growth %", -20, 40, 5, 1, key="sp_ord")
+        new_customers = st.slider("New customers / month", 0, 200, 30, 10, key="sp_cust")
+        repeat_rate   = st.slider("Repeat purchase rate %", 1.0, 20.0, 3.6, 0.1, key="sp_rep", format="%.1f%%")
+    with col_b:
+        st.markdown("**💰 Pricing & Value**")
+        aov_change    = st.slider("AOV change %", -20, 30, 0, 1, key="sp_aov")
+        upsell_rate   = st.slider("Upsell success rate %", 0, 30, 5, 1, key="sp_up")
+        premium_mix   = st.slider("Premium product mix %", 0, 50, 10, 5, key="sp_prem")
+    with col_c:
+        st.markdown("**🎫 Vouchers & Efficiency**")
+        voucher_rate  = st.slider("Voucher usage rate %", 20.0, 70.0, 48.75, 0.25, key="sp_vr", format="%.2f%%")
+        voucher_disc  = st.slider("Avg voucher discount S$", 5, 30, 10, 1, key="sp_vd")
+        ops_saving    = st.slider("Ops cost saving %", 0, 15, 0, 1, key="sp_ops")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Projection function ───────────────────────────────────────────────────
+    def project(months, ord_gr, aov_ch, vr, vd, rep, upsell, prem, ops_sav, mult):
+        rows = []
+        orders = BASE_ORDERS * mult
+        aov    = BASE_AOV * (1 + aov_ch/100) * (1 + prem*0.002) * (1 + upsell*0.003)
+        for i, mo in enumerate(months):
+            orders = max(40, orders * (1 + ord_gr/100))
+            vcost  = orders * (vr/100) * vd
+            gross  = orders * aov
+            repeat = gross * (rep/100) * 0.15
+            net    = (gross + repeat - vcost) * (1 + ops_sav/100 * 0.3)
+            rows.append({"month": mo, "orders": int(orders), "aov": round(aov),
+                         "gross": round(gross), "voucher_cost": round(vcost), "net": round(net)})
+        return pd.DataFrame(rows)
+
+    bear = project(BASE_MONTHS, order_growth, aov_change, voucher_rate, voucher_disc, repeat_rate, upsell_rate, premium_mix, ops_saving, 0.80)
+    base = project(BASE_MONTHS, order_growth, aov_change, voucher_rate, voucher_disc, repeat_rate, upsell_rate, premium_mix, ops_saving, 1.00)
+    bull = project(BASE_MONTHS, order_growth, aov_change, voucher_rate, voucher_disc, repeat_rate, upsell_rate, premium_mix, ops_saving, 1.22)
+
+    # ── 3 Scenario KPI cards ──────────────────────────────────────────────────
+    st.markdown('<div class="chart-card"><div class="chart-title">📊 6-Month Scenario Outcomes</div><div class="chart-sub">Bear = headwinds · Base = your sliders · Bull = tailwinds +22%</div>', unsafe_allow_html=True)
+    k1, k2, k3 = st.columns(3)
+    base_total = base["net"].sum()
+    for col, label, df, border_color, bg_color, text_color in [
+        (k1, "🐻 Bear Case", bear, "#fecaca", "#fef2f2", C["red"]),
+        (k2, "📊 Base Case", base, "#bfdbfe", "#eff6ff", C["blue"]),
+        (k3, "🚀 Bull Case", bull, "#bbf7d0", "#f0fdf4", C["green"]),
+    ]:
+        with col:
+            total_rev = df["net"].sum()
+            total_ord = df["orders"].sum()
+            avg_aov   = df["aov"].mean()
+            total_vc  = df["voucher_cost"].sum()
+            vs_pct    = (total_rev - base_total) / base_total * 100 if label != "📊 Base Case" else 0
+            delta_html = (f'<span style="color:{"#16a34a" if vs_pct>0 else "#dc2626"};font-size:11px;font-weight:700">'
+                          f'{"+" if vs_pct>0 else ""}{vs_pct:.1f}% vs base</span>') if vs_pct != 0 else ""
+            st.markdown(
+                f'<div style="background:{bg_color};border:2px solid {border_color};border-radius:14px;padding:18px 20px">'
+                f'<div style="font-size:15px;font-weight:800;color:{text_color};margin-bottom:12px">{label}</div>'
+                f'<div style="font-size:26px;font-weight:900;color:{text_color}">{fmt_s(total_rev)}</div>'
+                f'<div style="font-size:11px;color:#64748b;margin-bottom:12px">6-month net revenue {delta_html}</div>'
+                f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'
+                f'<div style="background:rgba(255,255,255,.7);border-radius:8px;padding:8px;text-align:center">'
+                f'<div style="font-size:13px;font-weight:800;color:{text_color}">{total_ord:,}</div>'
+                f'<div style="font-size:9px;color:#9ca3af;text-transform:uppercase">Orders</div></div>'
+                f'<div style="background:rgba(255,255,255,.7);border-radius:8px;padding:8px;text-align:center">'
+                f'<div style="font-size:13px;font-weight:800;color:{text_color}">S${round(avg_aov)}</div>'
+                f'<div style="font-size:9px;color:#9ca3af;text-transform:uppercase">Avg AOV</div></div>'
+                f'<div style="background:rgba(255,255,255,.7);border-radius:8px;padding:8px;text-align:center">'
+                f'<div style="font-size:13px;font-weight:800;color:#d97706">{fmt_s(int(total_vc))}</div>'
+                f'<div style="font-size:9px;color:#9ca3af;text-transform:uppercase">Voucher Cost</div></div>'
+                f'<div style="background:rgba(255,255,255,.7);border-radius:8px;padding:8px;text-align:center">'
+                f'<div style="font-size:13px;font-weight:800;color:{text_color}">{fmt_s(int(total_rev - total_vc))}</div>'
+                f'<div style="font-size:9px;color:#9ca3af;text-transform:uppercase">After Vouchers</div></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Projection chart ──────────────────────────────────────────────────────
+    st.markdown('<div class="chart-card"><div class="chart-title">📈 Revenue Projection — All 3 Scenarios</div><div class="chart-sub">Shaded band = Bear–Bull range · Dotted = historical bridge</div>', unsafe_allow_html=True)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=BASE_MONTHS + BASE_MONTHS[::-1],
+        y=bull["net"].tolist() + bear["net"].tolist()[::-1],
+        fill="toself", fillcolor="rgba(37,99,235,0.07)",
+        line=dict(color="rgba(0,0,0,0)"), name="Bear–Bull Band", showlegend=True
+    ))
+    hist_m = ["Oct","Nov","Dec","Jan"] + [BASE_MONTHS[0]]
+    hist_v = [88216, 94439, 96386, 74936, base["net"].iloc[0]]
+    fig.add_trace(go.Scatter(x=hist_m, y=hist_v, mode="lines",
+        line=dict(color="#94a3b8", width=1.5, dash="dot"),
+        name="Historical Bridge", showlegend=True))
+    for df, name, color, dash, w in [
+        (bear, "🐻 Bear", C["red"],   "dash",  2),
+        (base, "📊 Base", C["blue"],  "solid", 2.5),
+        (bull, "🚀 Bull", C["green"], "dash",  2),
+    ]:
+        fig.add_trace(go.Scatter(x=df["month"], y=df["net"], mode="lines+markers",
+            name=name, line=dict(color=color, width=w, dash=dash),
+            marker=dict(size=6, color=color)))
+    fig.update_layout(**PL(height=280, legend=True))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Monthly table + Campaign ROI calculator ───────────────────────────────
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.markdown('<div class="chart-card"><div class="chart-title">📋 Base Case Monthly Breakdown</div>', unsafe_allow_html=True)
+        tbl = base.copy()
+        tbl["Revenue"]      = tbl["net"].apply(fmt_s)
+        tbl["Orders"]       = tbl["orders"]
+        tbl["AOV"]          = tbl["aov"].apply(lambda x: f"S${x}")
+        tbl["Voucher Cost"] = tbl["voucher_cost"].apply(fmt_s)
+        tbl["MoM"] = tbl["net"].pct_change().apply(
+            lambda x: (f"{'↑' if x>0 else '↓'}{abs(x)*100:.1f}%") if pd.notna(x) else "—"
+        )
+        st.dataframe(
+            tbl[["month","Revenue","MoM","Orders","AOV","Voucher Cost"]].rename(columns={"month":"Month"}),
+            use_container_width=True, hide_index=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_r:
+        st.markdown('<div class="chart-card"><div class="chart-title">🎯 Campaign ROI Calculator</div><div class="chart-sub">Model the return on a specific campaign budget</div>', unsafe_allow_html=True)
+        camp_budget = st.number_input("Campaign budget (S$)", 1000, 100000, 10000, 500, key="sp_cb")
+        camp_conv   = st.slider("Expected conversion rate %", 1.0, 15.0, 4.0, 0.5, key="sp_cc", format="%.1f%%")
+        camp_aov_b  = st.slider("Campaign AOV boost %", 0, 40, 10, 5, key="sp_caov")
+        reach       = st.number_input("Estimated reach (users)", 500, 500000, 20000, 500, key="sp_reach")
+
+        camp_orders  = int(reach * camp_conv / 100)
+        camp_aov_val = BASE_AOV * (1 + camp_aov_b / 100)
+        camp_rev     = camp_orders * camp_aov_val
+        camp_roi     = (camp_rev - camp_budget) / camp_budget * 100 if camp_budget > 0 else 0
+        camp_roas    = camp_rev / camp_budget if camp_budget > 0 else 0
+
+        roi_c  = C["green"] if camp_roi > 0 else C["red"]
+        roas_c = C["green"] if camp_roas >= 3 else (C["amber"] if camp_roas >= 2 else C["red"])
+        roi_bg = "#f0fdf4" if camp_roi > 0 else "#fef2f2"
+        roi_bd = "#bbf7d0" if camp_roi > 0 else "#fecaca"
+        roas_bg= "#f0fdf4" if camp_roas >= 3 else "#fffbeb"
+        roas_bd= "#bbf7d0" if camp_roas >= 3 else "#fde68a"
+        verdict= ("🟢 Strong ROI — profitable. Consider scaling budget." if camp_roi > 50
+                  else "🟡 Positive but slim. Tighten targeting to improve." if camp_roi > 0
+                  else "🔴 Negative ROI — reduce spend or improve conversion.")
+
+        st.markdown(
+            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">'
+            f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px;text-align:center">'
+            f'<div style="font-size:20px;font-weight:900;color:{C["blue"]}">{camp_orders:,}</div>'
+            f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-top:4px">Est. Orders</div></div>'
+            f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px;text-align:center">'
+            f'<div style="font-size:20px;font-weight:900;color:{C["cyan"]}">{fmt_s(int(camp_rev))}</div>'
+            f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-top:4px">Est. Revenue</div></div>'
+            f'<div style="background:{roi_bg};border:1px solid {roi_bd};border-radius:10px;padding:14px;text-align:center">'
+            f'<div style="font-size:20px;font-weight:900;color:{roi_c}">{"+" if camp_roi>0 else ""}{camp_roi:.1f}%</div>'
+            f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-top:4px">ROI</div></div>'
+            f'<div style="background:{roas_bg};border:1px solid {roas_bd};border-radius:10px;padding:14px;text-align:center">'
+            f'<div style="font-size:20px;font-weight:900;color:{roas_c}">{camp_roas:.2f}x</div>'
+            f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-top:4px">ROAS</div></div>'
+            f'</div>'
+            f'<div style="margin-top:12px;background:{roi_bg};border-radius:8px;padding:10px 12px;font-size:12px;color:#374151;font-weight:600">{verdict}</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Lever sensitivity ranking ─────────────────────────────────────────────
+    st.markdown('<div class="chart-card"><div class="chart-title">⚡ Lever Sensitivity — What Moves the Needle Most?</div><div class="chart-sub">6-month revenue impact of increasing each lever by one step from current settings</div>', unsafe_allow_html=True)
+
+    def lever_impact(ord_gr=None, aov_ch=None, vr=None, vd=None, rep=None, upsell=None, prem=None, ops_sav=None):
+        return project(BASE_MONTHS,
+            ord_gr   if ord_gr   is not None else order_growth,
+            aov_ch   if aov_ch   is not None else aov_change,
+            vr       if vr       is not None else voucher_rate,
+            vd       if vd       is not None else voucher_disc,
+            rep      if rep      is not None else repeat_rate,
+            upsell   if upsell   is not None else upsell_rate,
+            prem     if prem     is not None else premium_mix,
+            ops_sav  if ops_sav  is not None else ops_saving,
+            1.0
+        )["net"].sum()
+
+    levers = [
+        ("📦 +5% order growth",      lever_impact(ord_gr=order_growth+5)        - base_total),
+        ("💎 +5% AOV increase",      lever_impact(aov_ch=aov_change+5)          - base_total),
+        ("🔁 +3% repeat rate",       lever_impact(rep=repeat_rate+3)            - base_total),
+        ("🎫 -5% voucher rate",      lever_impact(vr=max(20,voucher_rate-5))    - base_total),
+        ("💸 -S$2 voucher discount", lever_impact(vd=max(1,voucher_disc-2))     - base_total),
+        ("⬆️ +5% upsell rate",       lever_impact(upsell=upsell_rate+5)         - base_total),
+        ("🏷️ +5% premium mix",       lever_impact(prem=premium_mix+5)           - base_total),
+        ("🏭 +5% ops saving",        lever_impact(ops_sav=ops_saving+5)         - base_total),
+    ]
+    levers.sort(key=lambda x: x[1], reverse=True)
+    max_impact = max(abs(v) for _, v in levers) or 1
+
+    for name, impact in levers:
+        bar_w  = int(abs(impact) / max_impact * 100)
+        color  = C["green"] if impact >= 0 else C["red"]
+        bg     = "#f0fdf4" if impact >= 0 else "#fef2f2"
+        border = "#bbf7d0" if impact >= 0 else "#fecaca"
+        sign   = "+" if impact >= 0 else ""
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #f8fafc">'
+            f'<div style="width:200px;font-size:12px;color:#374151;font-weight:500;flex-shrink:0">{name}</div>'
+            f'<div style="flex:1;height:8px;background:#f1f5f9;border-radius:4px">'
+            f'<div style="height:100%;width:{bar_w}%;background:{color};border-radius:4px"></div></div>'
+            f'<div style="width:90px;text-align:right">'
+            f'<span style="background:{bg};border:1px solid {border};border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;color:{color}">'
+            f'{sign}{fmt_s(int(abs(impact)))}</span></div></div>',
+            unsafe_allow_html=True
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FLOATING AI CHATBOT
