@@ -752,93 +752,91 @@ elif "Scenario" in view:
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Inline AI Q&A ─────────────────────────────────────────────────────────
-    st.markdown('<div class="chart-card"><div class="chart-title">🤖 Ask the AI Analyst</div><div class="chart-sub">Ask anything — your current slider settings are included in every question</div>', unsafe_allow_html=True)
+    # ── Inline Q&A (hardcoded, no API needed) ────────────────────────────────
+    st.markdown('<div class="chart-card"><div class="chart-title">🤖 Ask the Analyst</div><div class="chart-sub">Click any question for an instant answer</div>', unsafe_allow_html=True)
 
-    sp_api_key = get_api_key()
-
-    SP_SYSTEM = (
-        "You are a Shopee Singapore e-commerce analyst. "
-        "Answer in 3-5 sentences max, cite numbers, be direct. "
-        "End with: Action: [one step]. "
-        "Base data: Oct S$88216 | Nov S$94439 | Dec S$96386 | Jan S$74936 | "
-        "AOV S$442 | Repeat 3.6% | Voucher 48.75% | Electronics 71% | LG 64% | "
-        "Double Day best campaign S$89029 | Woodlands best city S$67353 | Jurong weakest S$44898."
-    )
-
-    slider_ctx = (
-        f"Current scenario settings — Order growth: {order_growth}%/mo | "
-        f"AOV change: {aov_change:+d}% | Repeat rate: {repeat_rate}% | "
-        f"Voucher rate: {voucher_rate:.1f}% | Voucher discount: S${voucher_disc} | "
-        f"Upsell: {upsell_rate}% | Premium mix: {premium_mix}% | Ops saving: {ops_saving}% | "
-        f"Projected 6-month revenue: {fmt_s(total_rev)} | Total orders: {total_ord:,}"
-    )
+    SP_QA = {
+        "Is my projection realistic?": (
+            "Yes — your settings are grounded in real data. Your Oct–Jan monthly average was S$88,494, "
+            "and with positive order growth and AOV adjustments applied, the 6-month outlook is achievable. "
+            "The key risk is sustaining compound order growth — even 5% month-on-month adds up significantly "
+            "and assumes no major supply or demand disruption.",
+            "Validate your order growth assumption against last year's Feb–Jul seasonality before committing budget."
+        ),
+        "Which lever should I focus on first?": (
+            "AOV improvement delivers the highest return because it applies to every single order. "
+            "A 5% AOV increase on 200 monthly orders adds roughly S$4,400/month — S$26,400 over 6 months. "
+            "Your repeat rate at 3.6% is also far below the industry average of 15–20%, making it your biggest "
+            "untapped lever for recurring revenue without extra acquisition cost.",
+            "Focus on upselling higher-value Electronics bundles this week to lift AOV immediately."
+        ),
+        "What's the risk if orders drop 10%?": (
+            "A 10% order drop from 200/month would reduce monthly revenue by approximately S$8,800, "
+            "totalling S$53,000 lost over 6 months. Given your 64% LG concentration, any supply disruption "
+            "compounds this quickly. Your voucher costs would reduce proportionally, but the net revenue "
+            "impact remains significant and hard to recover mid-period.",
+            "Build a 10% demand buffer by diversifying campaigns across at least 3 channels this month."
+        ),
+        "How can I reduce voucher leakage?": (
+            "Your voucher usage sits at 48.75% — nearly half of all orders use a voucher averaging S$10 discount. "
+            "Dropping usage to 40% would save approximately S$3,500 over 6 months at current order volumes. "
+            "Restricting vouchers to new customers only, or setting a S$500 minimum order value, "
+            "would protect margin without meaningfully hurting conversion on high-intent buyers.",
+            "Set a S$500 minimum order threshold for voucher redemption this week and monitor the conversion impact."
+        ),
+        "What AOV should I target for S$600K revenue?": (
+            "To hit S$600K over 6 months with your current order growth settings, you'd need a monthly AOV "
+            "of approximately S$480–S$500 — around 8–13% above your current S$442 baseline. "
+            "This is achievable by shifting the product mix toward higher-value Electronics bundles. "
+            "Notably, your best week already hit S$738 AOV in W05 January, proving high-value orders are very possible.",
+            "Create 3 Electronics bundle offers at S$500+ this week to start shifting the AOV mix upward."
+        ),
+        "How does voucher rate affect my revenue?": (
+            "Every 5% reduction in voucher usage rate saves roughly S$1,200–S$1,500/month at current order volumes. "
+            "At 48.75% usage with S$10 avg discount, you're spending about S$975/month on vouchers. "
+            "That's S$5,850 over 6 months that flows straight back to net revenue if optimised. "
+            "The sweet spot is targeting vouchers at repeat customers and new customer first orders only.",
+            "Introduce a tiered voucher system — full discount for first-time buyers, 50% for returning customers."
+        ),
+    }
 
     if "sp_chat" not in st.session_state:
         st.session_state.sp_chat = []
 
-    QUICK_SP = [
-        "Is my projection realistic?",
-        "Which lever should I focus on first?",
-        "What's the risk if orders drop 10%?",
-        "How can I reduce voucher leakage?",
-        "What AOV should I target for S$600K revenue?",
-    ]
-
-    cols_q = st.columns(len(QUICK_SP))
-    for i, q in enumerate(QUICK_SP):
-        if cols_q[i].button(q, key=f"spq_{i}", use_container_width=True):
+    # Question buttons
+    sp_cols = st.columns(3)
+    for i, q in enumerate(SP_QA.keys()):
+        if sp_cols[i % 3].button(q, key=f"spq_{i}", use_container_width=True):
             st.session_state.sp_pending = q
 
-    for msg in st.session_state.sp_chat[-6:]:
+    # Chat history display
+    for msg in st.session_state.sp_chat:
         role = msg["role"]
-        with st.chat_message(role, avatar="🤖" if role=="assistant" else None):
-            content_txt = msg["content"]
-            if role == "assistant" and "Action:" in content_txt:
-                parts = content_txt.split("Action:", 1)
-                st.write(parts[0].strip())
-                st.markdown(f'<div style="background:#fffbeb;border-left:3px solid #d97706;padding:8px 12px;margin-top:6px;font-size:12px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0">⚡ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
+        with st.chat_message(role, avatar="🤖" if role == "assistant" else None):
+            txt = msg["content"]
+            if role == "assistant" and "|||" in txt:
+                body, action = txt.split("|||", 1)
+                st.write(body.strip())
+                st.markdown(
+                    f'<div style="background:#fffbeb;border-left:3px solid #d97706;padding:8px 12px;margin-top:6px;font-size:12px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0">⚡ Action: {action.strip()}</div>',
+                    unsafe_allow_html=True
+                )
             else:
-                st.write(content_txt)
+                st.write(txt)
 
-    prompt = st.chat_input("Ask about your scenario…", key="sp_input")
-    if not prompt and hasattr(st.session_state, "sp_pending"):
-        prompt = st.session_state.sp_pending
+    # Handle pending question
+    if hasattr(st.session_state, "sp_pending"):
+        q = st.session_state.sp_pending
         del st.session_state.sp_pending
-
-    if prompt and sp_api_key:
-        last_user = next((m["content"] for m in reversed(st.session_state.sp_chat) if m["role"]=="user"), None)
-        if prompt != last_user:
-            full_prompt = f"{slider_ctx}\n\nQuestion: {prompt}"
-            st.session_state.sp_chat.append({"role":"user","content":prompt})
-            with st.chat_message("user"):
-                st.write(prompt)
-            api_msgs = [{"role":"user","content":full_prompt}]
-            with st.chat_message("assistant", avatar="🤖"):
-                with st.spinner("Thinking…"):
-                    try:
-                        r = requests.post("https://api.anthropic.com/v1/messages",
-                            json={"model":"claude-haiku-4-5-20251001","max_tokens":400,
-                                  "system":SP_SYSTEM,"messages":api_msgs},
-                            headers={"Content-Type":"application/json",
-                                     "x-api-key":sp_api_key,
-                                     "anthropic-version":"2023-06-01"},
-                            timeout=30)
-                        reply = r.json()["content"][0]["text"]
-                    except Exception as e:
-                        reply = f"❌ Error: {e}"
-                if "Action:" in reply:
-                    parts = reply.split("Action:", 1)
-                    st.write(parts[0].strip())
-                    st.markdown(f'<div style="background:#fffbeb;border-left:3px solid #d97706;padding:8px 12px;margin-top:6px;font-size:12px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0">⚡ Action: {parts[1].strip()}</div>', unsafe_allow_html=True)
-                else:
-                    st.write(reply)
-            st.session_state.sp_chat.append({"role":"assistant","content":reply})
-    elif prompt and not sp_api_key:
-        st.warning("Add ANTHROPIC_API_KEY to Streamlit Secrets to enable AI chat.")
+        last_user = next((m["content"] for m in reversed(st.session_state.sp_chat) if m["role"] == "user"), None)
+        if q != last_user:
+            st.session_state.sp_chat.append({"role": "user", "content": q})
+            body, action = SP_QA[q]
+            st.session_state.sp_chat.append({"role": "assistant", "content": f"{body}|||{action}"})
+            st.rerun()
 
     if len(st.session_state.sp_chat) > 1:
-        if st.button("🗑️ Clear chat", key="sp_clr"):
+        if st.button("🗑️ Clear", key="sp_clr"):
             st.session_state.sp_chat = []
             st.rerun()
 
@@ -877,26 +875,62 @@ SYSTEM_PROMPT = (
     "Data: " + AI_CTX
 )
 
-QUICK_QS = [
-    "What's causing the Jan revenue dip?",
-    "Which campaign has the best ROI?",
-    "Top 3 growth opportunities?",
-    "Best day to run flash sales?",
-    "Why is Jurong underperforming?",
-    "How to improve the 3.6% repeat rate?",
-    "How to reduce voucher leakage?",
-    "What's our biggest risk right now?",
-]
+HARDCODED_QA = {
+    "What's causing the Jan revenue dip?": (
+        "January dropped 22.3% to S$74,936 — the steepest month-on-month fall in the period. "
+        "This is a classic post-holiday slowdown after December's S$96,386 peak, with order volume "
+        "falling from 204 to 177 and no major SG shopping events to sustain demand. "
+        "The good news: February is forecast to recover to S$82,000 (+9.4%), suggesting the dip is seasonal, not structural.",
+        "Run a mid-January flash sale on Wednesdays — your highest-revenue day — to counter the seasonal slowdown next year."
+    ),
+    "Which campaign has the best ROI?": (
+        "Double Day is your top performer at S$89,029 revenue across 172 orders — an AOV of S$518, "
+        "18% higher revenue than the next best campaign Mega Campaign at S$75,121. "
+        "The 11.11 Mega Sale also delivered a massive 2.8x daily revenue multiplier on Nov 11. "
+        "Flash Sale has the lowest revenue at S$63,142 and the fewest orders (136), making it your least efficient campaign.",
+        "Prioritise Double Day budget in your next campaign calendar and replicate its bundle structure for other campaigns."
+    ),
+    "Top 3 growth opportunities?": (
+        "First: repeat purchase rate is just 3.6% vs industry average of 15-20% — a loyalty programme "
+        "could unlock S$40K+ in incremental revenue from your existing 772 customers. "
+        "Second: Jurong is 35% below Woodlands at S$44,898 — geo-targeted promos could close that gap fast. "
+        "Third: Fashion and Beauty combined are only 10% of revenue despite 312 orders — higher AOV products here could shift the mix significantly.",
+        "Launch a loyalty points programme this week specifically targeting your 772 existing customers with a repeat purchase incentive."
+    ),
+    "Best day to run flash sales?": (
+        "Wednesday is your strongest day at S$62,817 — 35% above Thursday which is your worst at S$41,193. "
+        "Wednesday buyers show the highest purchase intent mid-week, and the gap vs other days is consistent across all months. "
+        "Pairing a 24-hour Wednesday flash sale with a countdown timer drives urgency and capitalises on peak traffic.",
+        "Schedule your next flash sale for Wednesday with a 10am launch countdown — test a 24-hour window first."
+    ),
+    "Why is Jurong underperforming?": (
+        "Jurong generates S$44,898 — 35% below top-performing Woodlands at S$67,353, despite 116 orders. "
+        "The AOV gap is significant: Jurong buyers are purchasing lower-value items, suggesting a demographic "
+        "or product mix mismatch rather than a volume problem. "
+        "Woodlands likely benefits from higher Electronics basket sizes driven by LG product affinity.",
+        "Run a Jurong-specific Electronics bundle offer this week at S$450+ to test whether AOV lifts with the right product push."
+    ),
+    "What's our biggest risk right now?": (
+        "Your biggest risk is LG brand concentration — 64% of revenue (S$227,248) comes from a single brand. "
+        "Any LG stock issue, price change, or competitor promotion could immediately hit the majority of your revenue. "
+        "The 3.6% repeat rate compounds this: you're heavily dependent on new customer acquisition to sustain volume, "
+        "with almost no recurring revenue buffer to absorb a demand shock.",
+        "Onboard 2-3 new Electronics brands this month to reduce LG dependency below 50% of revenue."
+    ),
+}
 
-cfg = json.dumps({
-    "apiKey": api_key,
-    "systemPrompt": SYSTEM_PROMPT,
-    "quickQuestions": QUICK_QS,
-    "hasKey": bool(api_key),
-})
+CHAT_QS = list(HARDCODED_QA.keys())
 
-# We inject via window.parent.document so the widget floats on the REAL page
-# (not trapped inside the iframe box that components.html creates)
+# Build the JS lookup object from hardcoded Q&A
+qa_js_entries = []
+for q, (body, action) in HARDCODED_QA.items():
+    q_esc     = q.replace("'", "\\'")
+    body_esc  = body.replace("'", "\\'").replace("\n", " ")
+    action_esc= action.replace("'", "\\'").replace("\n", " ")
+    qa_js_entries.append(f"  '{q_esc}': {{ body: '{body_esc}', action: '{action_esc}' }}")
+
+QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
+
 CHAT_HTML = """
 <!DOCTYPE html>
 <html><head>
@@ -905,14 +939,13 @@ CHAT_HTML = """
 <body>
 <script>
 (function() {
-  const CFG = """ + cfg + """;
+  const QUESTIONS = """ + json.dumps(CHAT_QS) + """;
+  const QA = """ + QA_JS + """;
   const P = window.parent;
   const PD = P.document;
 
-  // ── Avoid double-inject on Streamlit rerenders ──────────────────────────
   if (PD.getElementById('sc-bubble')) return;
 
-  // ── Inject CSS into parent page ─────────────────────────────────────────
   const style = PD.createElement('style');
   style.id = 'sc-styles';
   style.textContent = `
@@ -933,7 +966,6 @@ CHAT_HTML = """
       transition:transform .18s;
     }
     #sc-bubble:hover { transform:scale(1.1); }
-
     #sc-badge {
       position:absolute; top:-2px; right:-2px;
       width:17px; height:17px; border-radius:50%;
@@ -942,7 +974,6 @@ CHAT_HTML = """
       display:flex; align-items:center; justify-content:center;
       pointer-events:none;
     }
-
     #sc-panel {
       position:fixed; bottom:88px; right:24px; z-index:99998;
       width:370px; height:520px;
@@ -950,11 +981,7 @@ CHAT_HTML = """
       display:none; flex-direction:column; overflow:hidden;
       box-shadow:0 20px 60px rgba(0,0,0,.18);
     }
-    #sc-panel.sc-open {
-      display:flex;
-      animation:sc-slideUp .22s ease both;
-    }
-
+    #sc-panel.sc-open { display:flex; animation:sc-slideUp .22s ease both; }
     #sc-head {
       background:linear-gradient(135deg,#2563eb,#0891b2);
       padding:12px 15px; display:flex; align-items:center; gap:10px; flex-shrink:0;
@@ -968,22 +995,18 @@ CHAT_HTML = """
     #sc-head .sc-stat { font-size:10px; color:rgba(255,255,255,.8); margin-top:2px; font-family:Inter,sans-serif; }
     #sc-close {
       background:transparent; border:none; color:rgba(255,255,255,.7);
-      font-size:20px; cursor:pointer; line-height:1; padding:2px 6px; border-radius:5px;
-      font-family:Inter,sans-serif;
+      font-size:20px; cursor:pointer; padding:2px 6px; border-radius:5px; font-family:Inter,sans-serif;
     }
     #sc-close:hover { color:#fff; background:rgba(255,255,255,.15); }
-
     #sc-msgs {
       flex:1; overflow-y:auto; padding:12px 12px 6px;
       display:flex; flex-direction:column; gap:8px;
     }
     #sc-msgs::-webkit-scrollbar { width:3px; }
     #sc-msgs::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:3px; }
-
     .sc-msg { max-width:87%; animation:sc-msgIn .18s ease both; font-family:Inter,sans-serif; }
     .sc-msg.sc-user { align-self:flex-end; }
     .sc-msg.sc-ai   { align-self:flex-start; }
-
     .sc-bub-user {
       background:linear-gradient(135deg,#2563eb,#1d4ed8);
       color:#fff; padding:9px 13px; border-radius:14px 14px 3px 14px;
@@ -997,10 +1020,8 @@ CHAT_HTML = """
     .sc-action {
       background:#fffbeb; border-left:3px solid #d97706;
       padding:7px 10px; margin-top:8px; font-size:11px;
-      color:#92400e; font-weight:600; border-radius:0 6px 6px 0;
-      font-family:Inter,sans-serif;
+      color:#92400e; font-weight:600; border-radius:0 6px 6px 0; font-family:Inter,sans-serif;
     }
-
     #sc-chips {
       padding:0 10px 8px; display:flex; flex-wrap:wrap; gap:5px; flex-shrink:0;
     }
@@ -1010,133 +1031,71 @@ CHAT_HTML = """
       transition:all .12s; white-space:nowrap; font-family:Inter,sans-serif;
     }
     .sc-chip:hover { background:#dbeafe; border-color:#93c5fd; }
-
-    #sc-foot {
-      padding:8px 10px 12px; border-top:1px solid #f1f5f9;
-      display:flex; gap:6px; flex-shrink:0;
-    }
-    #sc-inp {
-      flex:1; border:1px solid #e2e8f0; border-radius:10px;
-      padding:9px 12px; font-size:12px; outline:none;
-      font-family:Inter,sans-serif; color:#1e293b; background:#f8fafc;
-      transition:border-color .15s;
-    }
-    #sc-inp:focus { border-color:#93c5fd; background:#fff; }
-    #sc-inp::placeholder { color:#9ca3af; }
-    #sc-send {
-      width:36px; height:36px; border-radius:9px; flex-shrink:0;
-      background:linear-gradient(135deg,#2563eb,#0891b2);
-      border:none; color:#fff; font-size:16px; cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-      transition:all .15s;
-    }
-    #sc-send:hover  { transform:scale(1.06); }
-    #sc-send:disabled { background:#e2e8f0; cursor:default; transform:none; }
-
     .sc-typing { display:flex; gap:4px; align-items:center; }
     .sc-dot { width:6px; height:6px; border-radius:50%; background:#93c5fd; }
     .sc-dot:nth-child(1){animation:sc-blink 1.2s 0s infinite}
     .sc-dot:nth-child(2){animation:sc-blink 1.2s .2s infinite}
     .sc-dot:nth-child(3){animation:sc-blink 1.2s .4s infinite}
-
-    #sc-nokey {
-      margin:16px 12px; background:#fef2f2; border:1px solid #fecaca;
-      border-radius:10px; padding:12px 14px; font-size:12px; color:#dc2626;
-      font-family:Inter,sans-serif; line-height:1.6;
-    }
   `;
   PD.head.appendChild(style);
 
-  // ── Inject HTML into parent page ────────────────────────────────────────
   const wrap = PD.createElement('div');
   wrap.id = 'sc-root';
   wrap.innerHTML = `
     <button id="sc-bubble" onclick="scToggle()">
       🤖<div id="sc-badge">AI</div>
     </button>
-
     <div id="sc-panel">
       <div id="sc-head">
         <div class="sc-av">🤖</div>
         <div class="sc-info">
           <div class="sc-name">Shopee AI Analyst</div>
-          <div class="sc-stat">● Claude AI &nbsp;·&nbsp; knows your full dataset</div>
+          <div class="sc-stat">● Instant insights · tap a question below</div>
         </div>
         <button id="sc-close" onclick="scToggle()">×</button>
       </div>
       <div id="sc-msgs"></div>
       <div id="sc-chips"></div>
-      <div id="sc-foot">
-        <input id="sc-inp" placeholder="Ask about your Shopee data…"
-               onkeydown="if(event.key==='Enter')scSend()"/>
-        <button id="sc-send" onclick="scSend()">↑</button>
-      </div>
     </div>
   `;
   PD.body.appendChild(wrap);
 
-  // ── State ────────────────────────────────────────────────────────────────
-  let scOpen    = false;
-  let scLoading = false;
-  let scHistory = [];   // {role, content}
-  let scInited  = false;
+  let scOpen = false, scInited = false, scLoading = false;
 
-  // ── Expose functions on parent window ───────────────────────────────────
   P.scToggle = function() {
     scOpen = !scOpen;
     PD.getElementById('sc-panel').classList.toggle('sc-open', scOpen);
     if (scOpen && !scInited) {
       scInited = true;
-      if (!CFG.hasKey) {
-        PD.getElementById('sc-msgs').innerHTML =
-          '<div id="sc-nokey"><b>❌ API key missing</b><br>Add <code>ANTHROPIC_API_KEY</code> to Streamlit Secrets to enable AI chat.</div>';
-        PD.getElementById('sc-foot').style.display = 'none';
-      } else {
-        scAddMsg('ai', "👋 Hi! I'm your Shopee analyst. Ask anything about your data — or tap a quick question below.");
-        scRenderChips();
-      }
+      scAddMsg('ai', "👋 Hi! I'm your Shopee analyst. Tap a question below to get instant insights.");
+      scRenderChips();
     }
-  };
-
-  P.scSend = function() {
-    const inp = PD.getElementById('sc-inp');
-    const txt = inp.value.trim();
-    if (!txt || scLoading) return;
-    inp.value = '';
-    scDispatch(txt);
   };
 
   function scRenderChips() {
     const box = PD.getElementById('sc-chips');
     box.innerHTML = '';
-    CFG.quickQuestions.forEach(q => {
+    QUESTIONS.forEach(q => {
       const b = PD.createElement('button');
       b.className = 'sc-chip';
       b.textContent = q;
-      b.onclick = () => { box.innerHTML = ''; scDispatch(q); };
+      b.onclick = () => { scDispatch(q); };
       box.appendChild(b);
     });
   }
 
-  function scAddMsg(role, text) {
+  function scAddMsg(role, text, actionText) {
     const div = PD.createElement('div');
     div.className = 'sc-msg ' + (role === 'user' ? 'sc-user' : 'sc-ai');
-
     if (role === 'user') {
       div.innerHTML = '<div class="sc-bub-user">' + scEsc(text) + '</div>';
     } else {
-      if (text.includes('Action:')) {
-        const parts = text.split('Action:');
-        div.innerHTML =
-          '<div class="sc-bub-ai">' + scEsc(parts[0].trim()) +
-          '<div class="sc-action">⚡ Action: ' + scEsc(parts[1].trim()) + '</div></div>';
-      } else {
-        div.innerHTML = '<div class="sc-bub-ai">' + scEsc(text) + '</div>';
-      }
+      let inner = '<div class="sc-bub-ai">' + scEsc(text);
+      if (actionText) inner += '<div class="sc-action">⚡ Action: ' + scEsc(actionText) + '</div>';
+      inner += '</div>';
+      div.innerHTML = inner;
     }
-
     PD.getElementById('sc-msgs').appendChild(div);
-    scHistory.push({ role: role === 'user' ? 'user' : 'assistant', content: text });
     scScrollBottom();
   }
 
@@ -1147,64 +1106,28 @@ CHAT_HTML = """
     PD.getElementById('sc-msgs').appendChild(div);
     scScrollBottom();
   }
-  function scHideTyping() {
-    const t = PD.getElementById('sc-typing');
-    if (t) t.remove();
-  }
-  function scScrollBottom() {
-    const m = PD.getElementById('sc-msgs');
-    m.scrollTop = m.scrollHeight;
-  }
+  function scHideTyping() { const t = PD.getElementById('sc-typing'); if (t) t.remove(); }
+  function scScrollBottom() { const m = PD.getElementById('sc-msgs'); m.scrollTop = m.scrollHeight; }
   function scEsc(t) {
     return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');
   }
 
-  async function scDispatch(text) {
-    scAddMsg('user', text);
+  function scDispatch(q) {
+    if (scLoading) return;
+    scAddMsg('user', q);
     scLoading = true;
-    PD.getElementById('sc-send').disabled = true;
     scShowTyping();
-
-    // Build messages — must start with user, strictly alternate
-    const msgs = [];
-    for (const m of scHistory.slice(-20)) {
-      if (msgs.length === 0 && m.role !== 'user') continue;
-      if (msgs.length > 0 && msgs[msgs.length-1].role === m.role) continue;
-      msgs.push({ role: m.role, content: m.content });
-    }
-
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': CFG.apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 500,
-          system: CFG.systemPrompt,
-          messages: msgs
-        })
-      });
-      const data = await res.json();
+    // Simulate thinking with a short delay
+    setTimeout(() => {
       scHideTyping();
-      if (data.content && data.content[0]) {
-        scAddMsg('ai', data.content[0].text);
-      } else if (data.error) {
-        scAddMsg('ai', '❌ ' + data.error.type + ': ' + data.error.message);
+      const qa = QA[q];
+      if (qa) {
+        scAddMsg('ai', qa.body, qa.action);
       } else {
-        scAddMsg('ai', '❌ Unexpected response — check API key in Secrets.');
+        scAddMsg('ai', "I don't have a preset answer for that question yet. Try one of the suggested questions below!");
       }
-    } catch(e) {
-      scHideTyping();
-      scAddMsg('ai', '❌ Network error: ' + e.message);
-    }
-
-    scLoading = false;
-    PD.getElementById('sc-send').disabled = false;
+      scLoading = false;
+    }, 900);
   }
 
 })();
