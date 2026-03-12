@@ -3,22 +3,24 @@ import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-import os, requests, json
+import os, requests, json, io
 from datetime import date, timedelta
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 st.set_page_config(page_title="Shopee Commerce Intelligence", page_icon="⚡", layout="wide")
 
-# ── API Key ───────────────────────────────────────────────────────────────────
 def get_api_key():
     try:
         k = st.secrets["ANTHROPIC_API_KEY"]
-        if k and str(k).strip():
-            return str(k).strip()
-    except Exception:
-        pass
+        if k and str(k).strip(): return str(k).strip()
+    except Exception: pass
     return os.environ.get("ANTHROPIC_API_KEY", "")
 
-# ── Colors ────────────────────────────────────────────────────────────────────
 C = {
     "blue":"#2563eb","cyan":"#0891b2","violet":"#7c3aed","purple":"#9333ea",
     "green":"#16a34a","amber":"#d97706","red":"#dc2626","orange":"#ea580c",
@@ -35,12 +37,10 @@ def PL(height=220, legend=False, **kw):
                    tickfont=dict(color="#6b7280", size=10)),
         height=height,
     )
-    if legend:
-        d["legend"] = dict(font=dict(color="#6b7280", size=10), bgcolor=None)
+    if legend: d["legend"] = dict(font=dict(color="#6b7280", size=10), bgcolor=None)
     d.update(kw)
     return d
 
-# ── Singapore Events ──────────────────────────────────────────────────────────
 SG_EVENTS = {
     date(2025,10, 1):"🎂 Children's Day",
     date(2025,10,31):"🎃 Halloween",
@@ -54,7 +54,6 @@ SG_EVENTS = {
     date(2026, 1,30):"🧧 CNY Day 2 ✦PH",
 }
 
-# ── Data ──────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
     monthly = pd.DataFrame([
@@ -160,13 +159,11 @@ def load_daily():
     df["rev_dod"] = df["revenue"].pct_change()*100
     return df
 
-# Load
 monthly_data   = load_data()
 weekly_data, categories_data, campaigns_data, cities_data, payments_data, brands_data, dow_data, SUMMARY = load_static()
 daily_data     = load_daily()
 actual_monthly = monthly_data[monthly_data["is_forecast"]==False]
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 def fmt_s(v):
     return f"S${v/1000:.1f}K" if v>=1000 else f"S${round(v)}"
 
@@ -175,6 +172,187 @@ def badge(p):
     p=float(p); arr="↑" if p>0 else("↓" if p<0 else"→")
     col=C["green"] if p>0 else(C["red"] if p<0 else"#64748b")
     return f'<span style="color:{col};font-weight:700;font-size:12px">{arr}{abs(p):.1f}%</span>'
+
+# ── PDF Report Generator (1 page) ─────────────────────────────────────────────
+def generate_pdf_report(monthly, brands, campaigns, summary):
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=1.2*cm, bottomMargin=1.0*cm)
+    W = A4[0] - 3*cm
+
+    SS = getSampleStyleSheet()
+    def sty(n, **kw): return ParagraphStyle(n, parent=SS["Normal"], **kw)
+
+    BLUE  = colors.HexColor("#2563eb"); DBLUE = colors.HexColor("#1e3a5f")
+    LGRAY = colors.HexColor("#f8fafc"); MGRAY = colors.HexColor("#e2e8f0")
+    DGRAY = colors.HexColor("#64748b"); GREEN = colors.HexColor("#16a34a")
+    RED   = colors.HexColor("#dc2626"); WHITE = colors.white
+    BLACK = colors.HexColor("#0f172a"); PURP  = colors.HexColor("#7c3aed")
+    AMBER = colors.HexColor("#d97706")
+
+    def fmts(v): return f"S${v:,.0f}"
+    def md(v):   return ("+" if v >= 0 else "") + f"{v:.1f}%" if pd.notna(v) else "—"
+
+    story = []
+
+    # Title bar
+    title_tbl = Table([[
+        Paragraph("Shopee Commerce Intelligence", sty("TT", fontSize=15, textColor=WHITE, fontName="Helvetica-Bold")),
+        Paragraph("Oct 2025 – Jan 2026  ·  800 orders  ·  772 customers",
+                  sty("TS", fontSize=8, textColor=colors.HexColor("#bfdbfe"), fontName="Helvetica", alignment=TA_RIGHT)),
+    ]], colWidths=[W*0.58, W*0.42])
+    title_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(-1,0), DBLUE),
+        ("ROWPADDING", (0,0),(-1,-1), 8),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    story.append(title_tbl)
+    story.append(Spacer(1, 6))
+
+    # 6 KPI tiles
+    actual = monthly[monthly["is_forecast"]==False]
+    last   = actual.iloc[-1]
+    col_w  = W / 6
+    kpis = [
+        ("GMV",             fmts(int(summary["totalRev"])),                         last["rev_mom"],  True),
+        ("Avg Order Value", f"S${summary['totalRev']/summary['totalOrders']:.0f}",  last["aov_mom"],  True),
+        ("Total Orders",    f"{summary['totalOrders']:,}",                          last["ord_mom"],  True),
+        ("Avg Delivery",    f"{summary['avgDelivery']:.1f} days",                  -2.9,             False),
+        ("Repeat Rate",     f"{summary['repeatRate']}%",                            0.2,              True),
+        ("Voucher Usage",   f"{summary['voucherRate']}%",                          -3.1,              False),
+    ]
+    r0, r1, r2 = [], [], []
+    for lbl, val, dv, higher_better in kpis:
+        pos = (dv >= 0) if higher_better else (dv <= 0)
+        r0.append(Paragraph(lbl,    sty("KL", fontSize=7,  textColor=DGRAY, fontName="Helvetica", alignment=TA_CENTER)))
+        r1.append(Paragraph(val,    sty("KV", fontSize=11, textColor=DBLUE, fontName="Helvetica-Bold", alignment=TA_CENTER)))
+        r2.append(Paragraph(md(dv), sty("KD", fontSize=7,  textColor=GREEN if pos else RED, fontName="Helvetica-Bold", alignment=TA_CENTER)))
+    kpi_tbl = Table([r0, r1, r2], colWidths=[col_w]*6)
+    kpi_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(-1,-1), LGRAY),
+        ("BOX",        (0,0),(-1,-1), 0.5, MGRAY),
+        ("INNERGRID",  (0,0),(-1,-1), 0.5, MGRAY),
+        ("ROWPADDING", (0,0),(-1,-1), 5),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 7))
+
+    def shdr(txt, bg=BLUE):
+        return Paragraph(txt, sty("SH", fontSize=8.5, textColor=WHITE, fontName="Helvetica-Bold",
+                                  backColor=bg, leading=12, leftIndent=4))
+
+    # ── Monthly trend table ────────────────────────────────────────────────────
+    mo_rows = [["Month", "Revenue", "MoM Δ", "Orders", "AOV", "Vchr%"]]
+    for _, r in actual.iterrows():
+        mo_rows.append([r["ym"], fmts(r["revenue"]), md(r["rev_mom"]),
+                        str(r["orders"]), f"S${r['aov']}", f"{r['voucher_rate']}%"])
+    cw_mo = [1.5*cm, 1.6*cm, 1.0*cm, 1.1*cm, 1.1*cm, 1.0*cm]
+    mo_tbl = Table([[shdr("Monthly Revenue Trend")]] + [mo_rows[0]] + mo_rows[1:], colWidths=cw_mo)
+    mo_tbl.setStyle(TableStyle([
+        ("SPAN",             (0,0),(-1,0)),
+        ("BACKGROUND",       (0,0),(-1,0), BLUE),
+        ("BACKGROUND",       (0,1),(-1,1), colors.HexColor("#dbeafe")),
+        ("FONTNAME",         (0,1),(-1,1), "Helvetica-Bold"),
+        ("FONTSIZE",         (0,0),(-1,-1), 7.5),
+        ("ROWBACKGROUNDS",   (0,2),(-1,-1), [WHITE, LGRAY]),
+        ("GRID",             (0,1),(-1,-1), 0.3, MGRAY),
+        ("ROWPADDING",       (0,0),(-1,-1), 4),
+        ("ALIGN",            (1,1),(-1,-1), "CENTER"),
+    ]))
+    for ri, row in enumerate(mo_rows[1:], start=2):
+        txt = row[2]
+        col = GREEN if txt.startswith("+") else (RED if txt.startswith("-") else None)
+        if col: mo_tbl.setStyle(TableStyle([("TEXTCOLOR",(2,ri),(2,ri),col),("FONTNAME",(2,ri),(2,ri),"Helvetica-Bold")]))
+
+    # ── Brands table (top 3 + bottom 2 clearly labelled) ──────────────────────
+    brand_deltas = {"LG":+12.3,"Philips":+4.1,"Nike":-2.8,"Anker":-6.2,"COSRX":-15.4}
+    bs = brands.sort_values("revenue", ascending=False).reset_index(drop=True)
+    bs["aov_v"] = (bs["revenue"]/bs["orders"]).round(0).astype(int)
+    total_br = bs["revenue"].sum()
+
+    br_rows = [["#", "Brand", "Revenue", "MoM Δ", "AOV", "Share", "Tier"]]
+    for i, r in bs.iterrows():
+        dv   = brand_deltas.get(r["name"], 0)
+        tier = "Top" if i < 3 else "Low"
+        br_rows.append([
+            str(i+1), r["name"], fmts(r["revenue"]),
+            md(dv), f"S${r['aov_v']}",
+            f"{r['revenue']/total_br*100:.1f}%", tier
+        ])
+    cw_br = [0.5*cm, 1.3*cm, 1.5*cm, 1.0*cm, 1.0*cm, 1.0*cm, 0.8*cm]
+    br_tbl = Table([[shdr("Brand Performance — Top 3 & Bottom Brands", DBLUE)]] + [br_rows[0]] + br_rows[1:], colWidths=cw_br)
+    br_tbl.setStyle(TableStyle([
+        ("SPAN",           (0,0),(-1,0)),
+        ("BACKGROUND",     (0,0),(-1,0), DBLUE),
+        ("BACKGROUND",     (0,1),(-1,1), colors.HexColor("#e0e7ff")),
+        ("FONTNAME",       (0,1),(-1,1), "Helvetica-Bold"),
+        ("FONTSIZE",       (0,0),(-1,-1), 7.5),
+        ("ROWBACKGROUNDS", (0,2),(-1,-1), [WHITE, LGRAY]),
+        ("GRID",           (0,1),(-1,-1), 0.3, MGRAY),
+        ("ROWPADDING",     (0,0),(-1,-1), 4),
+        ("ALIGN",          (2,1),(-1,-1), "CENTER"),
+        # Green bg for top 3 tier cell
+        ("BACKGROUND",     (6,2),(6,4), colors.HexColor("#dcfce7")),
+        ("TEXTCOLOR",      (6,2),(6,4), GREEN),
+        # Red bg for bottom 2 tier cell
+        ("BACKGROUND",     (6,5),(6,6), colors.HexColor("#fee2e2")),
+        ("TEXTCOLOR",      (6,5),(6,6), RED),
+    ]))
+    for ri, row in enumerate(br_rows[1:], start=2):
+        dv = float(row[3].replace("+","").replace("%",""))
+        col = GREEN if dv >= 0 else RED
+        br_tbl.setStyle(TableStyle([("TEXTCOLOR",(3,ri),(3,ri),col),("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold")]))
+
+    two_col = Table([[mo_tbl, br_tbl]], colWidths=[W*0.45, W*0.55])
+    two_col.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(1,0),(1,0),8)]))
+    story.append(two_col)
+    story.append(Spacer(1, 7))
+
+    # ── Campaign ROI table ─────────────────────────────────────────────────────
+    camp_spend = {"Double Day":18000,"Mega Campaign":22000,"Brand Day":14000,"Flash Sale":8000}
+    camp_delta = {"Double Day":+18.4,"Mega Campaign":+5.2,"Brand Day":-3.1,"Flash Sale":-8.6}
+    cr_rows = [["Campaign", "Revenue", "MoM Δ", "Est. Spend", "ROI", "ROAS", "Orders", "AOV"]]
+    for _, r in campaigns.iterrows():
+        spend = camp_spend[r["name"]]
+        roi   = (r["revenue"] - spend) / spend * 100
+        roas  = r["revenue"] / spend
+        dv    = camp_delta[r["name"]]
+        cr_rows.append([r["name"], fmts(r["revenue"]), md(dv), fmts(spend),
+                        f"{roi:.0f}%", f"{roas:.1f}x", str(r["orders"]),
+                        f"S${r['revenue']//r['orders']}"])
+    cw_cr = [W*0.16, W*0.12, W*0.08, W*0.12, W*0.08, W*0.08, W*0.08, W*0.08]
+    cr_tbl = Table([[shdr("Campaign ROI Analysis", PURP)]] + [cr_rows[0]] + cr_rows[1:], colWidths=cw_cr)
+    cr_tbl.setStyle(TableStyle([
+        ("SPAN",           (0,0),(-1,0)),
+        ("BACKGROUND",     (0,0),(-1,0), PURP),
+        ("BACKGROUND",     (0,1),(-1,1), colors.HexColor("#ede9fe")),
+        ("FONTNAME",       (0,1),(-1,1), "Helvetica-Bold"),
+        ("FONTSIZE",       (0,0),(-1,-1), 7.5),
+        ("ROWBACKGROUNDS", (0,2),(-1,-1), [WHITE, LGRAY]),
+        ("GRID",           (0,1),(-1,-1), 0.3, MGRAY),
+        ("ROWPADDING",     (0,0),(-1,-1), 4),
+        ("ALIGN",          (1,1),(-1,-1), "CENTER"),
+    ]))
+    for ri, row in enumerate(cr_rows[1:], start=2):
+        for ci, txt in [(2, row[2]), (4, row[4])]:
+            try: pos = txt.startswith("+") or float(txt.replace("%","")) > 0
+            except: pos = True
+            col = GREEN if pos else RED
+            cr_tbl.setStyle(TableStyle([("TEXTCOLOR",(ci,ri),(ci,ri),col),("FONTNAME",(ci,ri),(ci,ri),"Helvetica-Bold")]))
+    story.append(cr_tbl)
+    story.append(Spacer(1, 5))
+
+    # Footer
+    story.append(HRFlowable(width=W, thickness=0.4, color=MGRAY, spaceAfter=3))
+    story.append(Paragraph(
+        f"Shopee Commerce Intelligence  ·  Generated {date.today().strftime('%d %b %Y')}  ·  Confidential",
+        sty("FT", fontSize=7, textColor=DGRAY, fontName="Helvetica", alignment=TA_CENTER)
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
@@ -231,16 +409,22 @@ with st.sidebar:
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Data Upload</p>', unsafe_allow_html=True)
     up = st.file_uploader("CSV/Excel",type=["csv","xlsx","xls"],label_visibility="collapsed")
-    if up:
-        st.success(f"✓ {up.name}")
+    if up: st.success(f"✓ {up.name}")
 
-    st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">AI Status</p>', unsafe_allow_html=True)
-    if get_api_key():
-        st.markdown('<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;font-size:12px;color:#15803d;font-weight:600">✅ Claude AI ready — chat bottom right ↘</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#dc2626;font-weight:600">❌ Add ANTHROPIC_API_KEY to Secrets</div>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">📥 Download Report</p>', unsafe_allow_html=True)
+    try:
+        pdf_bytes = generate_pdf_report(monthly_data, brands_data, campaigns_data, SUMMARY)
+        st.download_button(
+            label="Download 1-Page PDF Report",
+            data=pdf_bytes,
+            file_name=f"shopee_report_{date.today().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.error(f"PDF error: {e}")
 
-    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:16px">Powered by Claude AI (Anthropic)</p>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:10px;color:#cbd5e1;text-align:center;margin-top:16px">Shopee Commerce Intelligence</p>', unsafe_allow_html=True)
 
 # ── Filtered slices ───────────────────────────────────────────────────────────
 filt_m  = actual_monthly if month_filter=="All Months"   else actual_monthly[actual_monthly["ym"]==month_filter]
@@ -598,103 +782,103 @@ elif "Geography" in view:
         st.plotly_chart(fig_b,use_container_width=True,config={"displayModeBar":False})
     st.markdown('</div>',unsafe_allow_html=True)
 
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # SCENARIO PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Scenario" in view:
     st.markdown('<div class="section-header">🎯 Scenario Planning</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Adjust the sliders to model your strategy — revenue projection updates instantly</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Adjust the 4 key levers — projection updates instantly</div>', unsafe_allow_html=True)
 
-    BASE_ORDERS = 200
-    BASE_AOV    = 442
-    BASE_MONTHS = ["Feb","Mar","Apr","May","Jun","Jul"]
+    BASE_ORDERS   = 200
+    BASE_AOV      = 442
+    BASE_MONTHS   = ["Feb","Mar","Apr","May","Jun","Jul"]
+    BASE_VOUCHER  = 48.75   # baseline voucher rate for elasticity calc
 
-    # ── Levers ────────────────────────────────────────────────────────────────
     st.markdown('<div class="chart-card"><div class="chart-title">📐 Business Levers</div><div class="chart-sub">Drag to model your strategy</div>', unsafe_allow_html=True)
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        st.markdown("**📦 Volume & Growth**")
-        order_growth  = st.slider("Monthly order growth %", -20, 40, 5, 1, key="sp_ord")
-        new_customers = st.slider("New customers / month", 0, 200, 30, 10, key="sp_cust")
-        repeat_rate   = st.slider("Repeat purchase rate %", 1.0, 20.0, 3.6, 0.1, key="sp_rep", format="%.1f%%")
+        order_growth = st.slider("📦 Monthly order growth %", -20, 40, 5, 1, key="sp_ord")
+        st.caption("Baseline: ~5%/mo")
     with col_b:
-        st.markdown("**💰 Pricing & Value**")
-        aov_change  = st.slider("AOV change %", -20, 30, 0, 1, key="sp_aov")
-        upsell_rate = st.slider("Upsell success rate %", 0, 30, 5, 1, key="sp_up")
-        premium_mix = st.slider("Premium product mix %", 0, 50, 10, 5, key="sp_prem")
+        aov_change = st.slider("💰 AOV change %", -20, 30, 0, 1, key="sp_aov")
+        st.caption("Baseline: S$442")
     with col_c:
-        st.markdown("**🎫 Vouchers & Efficiency**")
-        voucher_rate = st.slider("Voucher usage rate %", 20.0, 70.0, 48.75, 0.25, key="sp_vr", format="%.2f%%")
-        voucher_disc = st.slider("Avg voucher discount S$", 5, 30, 10, 1, key="sp_vd")
-        ops_saving   = st.slider("Ops cost saving %", 0, 15, 0, 1, key="sp_ops")
+        repeat_rate = st.slider("🔁 Repeat rate %", 1.0, 20.0, 3.6, 0.1, key="sp_rep", format="%.1f%%")
+        st.caption("Baseline: 3.6% (low)")
+    with col_d:
+        voucher_rate = st.slider("🎫 Voucher usage %", 20.0, 70.0, 48.75, 0.25, key="sp_vr", format="%.2f%%")
+        st.caption("Baseline: 48.75%")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Projection ────────────────────────────────────────────────────────────
-    def sp_project(ord_gr, aov_ch, vr, vd, rep, upsell, prem, ops_sav):
-        rows = []
-        orders = float(BASE_ORDERS)
-        aov    = BASE_AOV * (1 + aov_ch/100) * (1 + prem*0.002) * (1 + upsell*0.003)
+    # ── Projection model ─────────────────────────────────────────────────────
+    # Voucher elasticity: customers are price-sensitive.
+    # Every 10pp drop in voucher rate → ~4% fewer orders (some buyers need the incentive).
+    # Every 10pp rise → ~3% more orders (vouchers attract deal-seekers).
+    def voucher_order_multiplier(vr):
+        delta_pp = vr - BASE_VOUCHER           # how many pp above/below baseline
+        if delta_pp >= 0:
+            return 1 + (delta_pp / 10) * 0.03  # more vouchers → slightly more orders
+        else:
+            return 1 + (delta_pp / 10) * 0.04  # fewer vouchers → fewer orders
+
+    def sp_project(ord_gr, aov_ch, vr, rep):
+        rows   = []
+        orders = float(BASE_ORDERS) * voucher_order_multiplier(vr)
+        aov    = BASE_AOV * (1 + aov_ch / 100)
+        vd     = 10   # fixed avg discount S$10
         for mo in BASE_MONTHS:
-            orders = max(40, orders * (1 + ord_gr/100))
-            vcost  = orders * (vr/100) * vd
-            gross  = orders * aov
-            repeat_rev = gross * (rep/100) * 0.15
-            net    = (gross + repeat_rev - vcost) * (1 + ops_sav/100 * 0.3)
+            orders      = max(40, orders * (1 + ord_gr / 100))
+            vcost       = orders * (vr / 100) * vd
+            gross       = orders * aov
+            repeat_rev  = gross * (rep / 100) * 0.15
+            net         = gross + repeat_rev - vcost
             rows.append({"month": mo, "orders": int(orders), "aov": round(aov),
                          "voucher_cost": round(vcost), "net": round(net)})
         return pd.DataFrame(rows)
 
-    proj = sp_project(order_growth, aov_change, voucher_rate, voucher_disc,
-                      repeat_rate, upsell_rate, premium_mix, ops_saving)
-    total_rev  = proj["net"].sum()
-    total_ord  = proj["orders"].sum()
-    total_vc   = proj["voucher_cost"].sum()
-    avg_aov_p  = proj["aov"].mean()
-    vs_base    = (total_rev - 530964) / 530964 * 100  # vs flat baseline (88494*6)
+    proj      = sp_project(order_growth, aov_change, voucher_rate, repeat_rate)
+    total_rev = proj["net"].sum()
+    total_ord = proj["orders"].sum()
+    total_vc  = proj["voucher_cost"].sum()
+    vs_base   = (total_rev - 530964) / 530964 * 100
 
-    # ── 4 summary KPIs ────────────────────────────────────────────────────────
+    # ── 4 KPI summary ────────────────────────────────────────────────────────
     kc1, kc2, kc3, kc4 = st.columns(4)
-    vc = C["green"] if vs_base >= 0 else C["red"]
-    vbg= "#f0fdf4" if vs_base >= 0 else "#fef2f2"
-    vbd= "#bbf7d0" if vs_base >= 0 else "#fecaca"
+    vc_col = C["green"] if vs_base >= 0 else C["red"]
     for col, icon, label, val, sub, color, bg, border in [
-        (kc1,"💰","6-Month Revenue",    fmt_s(total_rev),    "Your projection",     C["blue"],  "#eff6ff","#bfdbfe"),
-        (kc2,"📦","Total Orders",       f"{total_ord:,}",    "6 months",            C["cyan"],  "#ecfeff","#a5f3fc"),
-        (kc3,"🎫","Voucher Cost",       fmt_s(int(total_vc)),"Total discount spend", C["amber"],"#fffbeb","#fde68a"),
-        (kc4,"📈","vs Flat Baseline",   f"{'+'if vs_base>=0 else ''}{vs_base:.1f}%","vs S$530K baseline", vc, vbg, vbd),
+        (kc1,"💰","6-Month Revenue",   fmt_s(total_rev),    "Your projection",      C["blue"],  "#eff6ff","#bfdbfe"),
+        (kc2,"📦","Total Orders",      f"{total_ord:,}",    "6 months",             C["cyan"],  "#ecfeff","#a5f3fc"),
+        (kc3,"🎫","Voucher Cost",      fmt_s(int(total_vc)),"Discount spend",       C["amber"], "#fffbeb","#fde68a"),
+        (kc4,"📈","vs Flat Baseline",  f"{'+'if vs_base>=0 else ''}{vs_base:.1f}%","vs S$530K", vc_col,
+             "#f0fdf4" if vs_base>=0 else "#fef2f2",
+             "#bbf7d0" if vs_base>=0 else "#fecaca"),
     ]:
         with col:
             st.markdown(
-                f'<div style="background:{bg};border:1px solid {border};border-radius:12px;padding:16px 18px;margin-bottom:10px">' +
-                f'<div style="font-size:20px;margin-bottom:6px">{icon}</div>' +
-                f'<div style="font-size:20px;font-weight:900;color:{color}">{val}</div>' +
-                f'<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;margin:4px 0 2px">{label}</div>' +
+                f'<div style="background:{bg};border:1px solid {border};border-radius:12px;padding:16px 18px;margin-bottom:10px">'
+                f'<div style="font-size:20px;margin-bottom:6px">{icon}</div>'
+                f'<div style="font-size:20px;font-weight:900;color:{color}">{val}</div>'
+                f'<div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;margin:4px 0 2px">{label}</div>'
                 f'<div style="font-size:11px;color:#9ca3af">{sub}</div></div>',
                 unsafe_allow_html=True
             )
 
     # ── Projection chart ──────────────────────────────────────────────────────
-    st.markdown('<div class="chart-card"><div class="chart-title">📈 6-Month Revenue Projection</div><div class="chart-sub">Your slider settings applied forward from Feb 2026</div>', unsafe_allow_html=True)
+    st.markdown('<div class="chart-card"><div class="chart-title">📈 6-Month Revenue Projection</div><div class="chart-sub">Dotted = historical bridge from Oct–Jan actuals</div>', unsafe_allow_html=True)
     fig = go.Figure()
     hist_m = ["Oct","Nov","Dec","Jan", BASE_MONTHS[0]]
     hist_v = [88216, 94439, 96386, 74936, proj["net"].iloc[0]]
     fig.add_trace(go.Scatter(x=hist_m, y=hist_v, mode="lines",
-        line=dict(color="#94a3b8", width=1.5, dash="dot"),
-        name="Historical Bridge", showlegend=True))
-    fig.add_trace(go.Scatter(
-        x=proj["month"], y=proj["net"],
+        line=dict(color="#94a3b8", width=1.5, dash="dot"), name="Historical Bridge", showlegend=True))
+    fig.add_trace(go.Scatter(x=proj["month"], y=proj["net"],
         mode="lines+markers", name="Your Projection",
-        line=dict(color=C["blue"], width=2.5),
-        marker=dict(size=8, color=C["blue"]),
-        fill="tozeroy", fillcolor="rgba(37,99,235,0.07)"
-    ))
-    fig.update_layout(**PL(height=260, legend=True))
+        line=dict(color=C["blue"], width=2.5), marker=dict(size=8, color=C["blue"]),
+        fill="tozeroy", fillcolor="rgba(37,99,235,0.07)"))
+    fig.update_layout(**PL(height=250, legend=True))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Monthly table + Lever sensitivity ─────────────────────────────────────
+    # ── Monthly table + lever sensitivity ─────────────────────────────────────
     col_l, col_r = st.columns(2)
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">📋 Monthly Breakdown</div>', unsafe_allow_html=True)
@@ -706,55 +890,46 @@ elif "Scenario" in view:
         tbl["MoM"] = tbl["net"].pct_change().apply(
             lambda x: f"{'↑' if x>0 else '↓'}{abs(x)*100:.1f}%" if pd.notna(x) else "—"
         )
-        st.dataframe(
-            tbl[["month","Revenue","MoM","Orders","AOV","Voucher Cost"]].rename(columns={"month":"Month"}),
-            use_container_width=True, hide_index=True
-        )
+        st.dataframe(tbl[["month","Revenue","MoM","Orders","AOV","Voucher Cost"]].rename(columns={"month":"Month"}),
+                     use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
-        st.markdown('<div class="chart-card"><div class="chart-title">⚡ What Moves Revenue Most?</div><div class="chart-sub">Impact of nudging each lever one step</div>', unsafe_allow_html=True)
-        proj_total = proj["net"].sum()
+        st.markdown('<div class="chart-card"><div class="chart-title">⚡ What Moves Revenue Most?</div><div class="chart-sub">Impact of nudging each lever one step from current</div>', unsafe_allow_html=True)
+        base_total = proj["net"].sum()
         def nudge(**kw):
             return sp_project(
-                kw.get("ord_gr", order_growth), kw.get("aov_ch", aov_change),
-                kw.get("vr", voucher_rate),      kw.get("vd", voucher_disc),
-                kw.get("rep", repeat_rate),       kw.get("upsell", upsell_rate),
-                kw.get("prem", premium_mix),      kw.get("ops_sav", ops_saving)
+                kw.get("og", order_growth), kw.get("ac", aov_change),
+                kw.get("vr", voucher_rate), kw.get("rr", repeat_rate)
             )["net"].sum()
 
         levers = [
-            ("📦 +5% orders",        nudge(ord_gr=order_growth+5)              - proj_total),
-            ("💎 +5% AOV",           nudge(aov_ch=aov_change+5)                - proj_total),
-            ("🔁 +3% repeat rate",   nudge(rep=repeat_rate+3)                  - proj_total),
-            ("🎫 -5% voucher rate",  nudge(vr=max(20,voucher_rate-5))          - proj_total),
-            ("💸 -S$2 voucher disc", nudge(vd=max(1,voucher_disc-2))           - proj_total),
-            ("⬆️ +5% upsell",        nudge(upsell=upsell_rate+5)               - proj_total),
-            ("🏷️ +5% premium mix",   nudge(prem=premium_mix+5)                 - proj_total),
-            ("🏭 +5% ops saving",    nudge(ops_sav=ops_saving+5)               - proj_total),
+            ("📦 +5% orders",       nudge(og=order_growth+5)                 - base_total),
+            ("💎 +5% AOV",          nudge(ac=aov_change+5)                   - base_total),
+            ("🔁 +3% repeat rate",  nudge(rr=repeat_rate+3)                  - base_total),
+            ("🎫 -5% voucher rate", nudge(vr=max(20, voucher_rate-5))        - base_total),
         ]
         levers.sort(key=lambda x: x[1], reverse=True)
         max_impact = max(abs(v) for _, v in levers) or 1
         for name, impact in levers:
-            bw  = int(abs(impact)/max_impact*100)
-            col_= C["green"] if impact>=0 else C["red"]
-            bg_ = "#f0fdf4" if impact>=0 else "#fef2f2"
-            bd_ = "#bbf7d0" if impact>=0 else "#fecaca"
+            bw   = int(abs(impact)/max_impact*100)
+            col_ = C["green"] if impact >= 0 else C["red"]
+            bg_  = "#f0fdf4" if impact >= 0 else "#fef2f2"
+            bd_  = "#bbf7d0" if impact >= 0 else "#fecaca"
             st.markdown(
-                f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f8fafc">' +
-                f'<div style="width:160px;font-size:11px;color:#374151;font-weight:500;flex-shrink:0">{name}</div>' +
-                f'<div style="flex:1;height:7px;background:#f1f5f9;border-radius:4px">' +
-                f'<div style="height:100%;width:{bw}%;background:{col_};border-radius:4px"></div></div>' +
-                f'<div style="width:80px;text-align:right">' +
-                f'<span style="background:{bg_};border:1px solid {bd_};border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;color:{col_}">' +
+                f'<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f8fafc">'
+                f'<div style="width:170px;font-size:12px;color:#374151;font-weight:500;flex-shrink:0">{name}</div>'
+                f'<div style="flex:1;height:8px;background:#f1f5f9;border-radius:4px">'
+                f'<div style="height:100%;width:{bw}%;background:{col_};border-radius:4px"></div></div>'
+                f'<div style="width:85px;text-align:right">'
+                f'<span style="background:{bg_};border:1px solid {bd_};border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;color:{col_}">'
                 f'{"+" if impact>=0 else ""}{fmt_s(int(abs(impact)))}</span></div></div>',
                 unsafe_allow_html=True
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Inline Q&A (hardcoded, no API needed) ────────────────────────────────
+    # ── Inline Q&A ────────────────────────────────────────────────────────────
     st.markdown('<div class="chart-card"><div class="chart-title">🤖 Ask the Analyst</div><div class="chart-sub">Click any question for an instant answer</div>', unsafe_allow_html=True)
-
     SP_QA = {
         "Is my projection realistic?": (
             "Yes — your settings are grounded in real data. Your Oct–Jan monthly average was S$88,494, "
@@ -773,43 +948,36 @@ elif "Scenario" in view:
         "What's the risk if orders drop 10%?": (
             "A 10% order drop from 200/month would reduce monthly revenue by approximately S$8,800, "
             "totalling S$53,000 lost over 6 months. Given your 64% LG concentration, any supply disruption "
-            "compounds this quickly. Your voucher costs would reduce proportionally, but the net revenue "
-            "impact remains significant and hard to recover mid-period.",
+            "compounds this quickly. Note: lower voucher rates also reduce orders slightly due to price elasticity.",
             "Build a 10% demand buffer by diversifying campaigns across at least 3 channels this month."
         ),
         "How can I reduce voucher leakage?": (
             "Your voucher usage sits at 48.75% — nearly half of all orders use a voucher averaging S$10 discount. "
-            "Dropping usage to 40% would save approximately S$3,500 over 6 months at current order volumes. "
-            "Restricting vouchers to new customers only, or setting a S$500 minimum order value, "
-            "would protect margin without meaningfully hurting conversion on high-intent buyers.",
-            "Set a S$500 minimum order threshold for voucher redemption this week and monitor the conversion impact."
+            "Dropping usage to 40% saves approximately S$3,500 over 6 months but will also reduce orders slightly "
+            "as some price-sensitive buyers drop off. Restricting vouchers to new customers or setting a S$500 "
+            "minimum order value protects margin without losing high-intent buyers.",
+            "Set a S$500 minimum order threshold for voucher redemption this week and monitor conversion impact."
         ),
         "What AOV should I target for S$600K revenue?": (
-            "To hit S$600K over 6 months with your current order growth settings, you'd need a monthly AOV "
-            "of approximately S$480–S$500 — around 8–13% above your current S$442 baseline. "
+            "To hit S$600K over 6 months with current order growth, you'd need a monthly AOV of approximately "
+            "S$480–S$500 — around 8–13% above your current S$442 baseline. "
             "This is achievable by shifting the product mix toward higher-value Electronics bundles. "
             "Notably, your best week already hit S$738 AOV in W05 January, proving high-value orders are very possible.",
             "Create 3 Electronics bundle offers at S$500+ this week to start shifting the AOV mix upward."
         ),
-        "How does voucher rate affect my revenue?": (
-            "Every 5% reduction in voucher usage rate saves roughly S$1,200–S$1,500/month at current order volumes. "
-            "At 48.75% usage with S$10 avg discount, you're spending about S$975/month on vouchers. "
-            "That's S$5,850 over 6 months that flows straight back to net revenue if optimised. "
-            "The sweet spot is targeting vouchers at repeat customers and new customer first orders only.",
-            "Introduce a tiered voucher system — full discount for first-time buyers, 50% for returning customers."
+        "Why do orders change when I adjust vouchers?": (
+            "Voucher rate affects orders because customers are price-sensitive — vouchers are a demand driver, "
+            "not just a cost. In this model, every 10pp drop in voucher usage reduces orders by ~4% as some "
+            "deal-seeking buyers drop off. Conversely, increasing vouchers attracts ~3% more orders. "
+            "This reflects real Shopee behaviour where promotions drive significant incremental volume.",
+            "Test a 5pp voucher reduction with a parallel loyalty incentive to offset the order drop."
         ),
     }
-
-    if "sp_chat" not in st.session_state:
-        st.session_state.sp_chat = []
-
-    # Question buttons
+    if "sp_chat" not in st.session_state: st.session_state.sp_chat = []
     sp_cols = st.columns(3)
     for i, q in enumerate(SP_QA.keys()):
         if sp_cols[i % 3].button(q, key=f"spq_{i}", use_container_width=True):
             st.session_state.sp_pending = q
-
-    # Chat history display
     for msg in st.session_state.sp_chat:
         role = msg["role"]
         with st.chat_message(role, avatar="🤖" if role == "assistant" else None):
@@ -817,14 +985,9 @@ elif "Scenario" in view:
             if role == "assistant" and "|||" in txt:
                 body, action = txt.split("|||", 1)
                 st.write(body.strip())
-                st.markdown(
-                    f'<div style="background:#fffbeb;border-left:3px solid #d97706;padding:8px 12px;margin-top:6px;font-size:12px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0">⚡ Action: {action.strip()}</div>',
-                    unsafe_allow_html=True
-                )
+                st.markdown(f'<div style="background:#fffbeb;border-left:3px solid #d97706;padding:8px 12px;margin-top:6px;font-size:12px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0">⚡ Action: {action.strip()}</div>', unsafe_allow_html=True)
             else:
                 st.write(txt)
-
-    # Handle pending question
     if hasattr(st.session_state, "sp_pending"):
         q = st.session_state.sp_pending
         del st.session_state.sp_pending
@@ -834,47 +997,15 @@ elif "Scenario" in view:
             body, action = SP_QA[q]
             st.session_state.sp_chat.append({"role": "assistant", "content": f"{body}|||{action}"})
             st.rerun()
-
     if len(st.session_state.sp_chat) > 1:
         if st.button("🗑️ Clear", key="sp_clr"):
             st.session_state.sp_chat = []
             st.rerun()
-
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FLOATING AI CHATBOT
-# Injected into window.parent.document so position:fixed works on the real page
-# Calls Anthropic API with required browser CORS header
 # ══════════════════════════════════════════════════════════════════════════════
-import streamlit.components.v1 as components
-import json
-
-api_key = get_api_key()
-
-AI_CTX = (
-    "Shopee Singapore Oct 2025-Jan 2026, 800 orders. "
-    "Revenue: Oct S$88216 -> Nov S$94439(+7.1%) -> Dec S$96386(+2.1%) -> Jan S$74936(-22.3%). Feb forecast S$82000(+9.4%). "
-    "Total S$353977 | AOV S$442 | Repeat 3.6% | Delivery 3.1d | Rating 4.65 | Voucher 48.75%. "
-    "Electronics 71% S$251955 | Home S$67817 | Fashion S$26834 | Beauty S$7371. "
-    "LG 64% S$227248 (concentration risk) | Philips S$67817 | Nike S$26834 | Anker S$24707. "
-    "Double Day S$89029 best ROI | Mega Campaign S$75121 | Brand Day S$68307 | Flash Sale S$63142. "
-    "Woodlands best S$67353 | Jurong weakest S$44898 (-35% gap). "
-    "PayNow leads S$104497 | Desktop 52% vs Mobile 48%. "
-    "Wednesday best day S$62817 | Thursday worst S$41193. "
-    "Peak weeks: W52 Christmas S$33554 | W44 Oct S$31646. Best AOV: W05 Jan S$738. "
-    "SG event boosts: 11.11 Mega Sale 2.8x | Christmas 1.9x | CNY 1.7x."
-)
-
-SYSTEM_PROMPT = (
-    "You are a sharp Shopee Singapore e-commerce analyst. Rules: "
-    "Max 4 sentences, be direct, no filler. "
-    "Always cite exact numbers (S$, %, dates). "
-    "End every reply with: Action: [one concrete step this week]. "
-    "Data: " + AI_CTX
-)
-
 HARDCODED_QA = {
     "What's causing the Jan revenue dip?": (
         "January dropped 22.3% to S$74,936 — the steepest month-on-month fall in the period. "
@@ -920,219 +1051,80 @@ HARDCODED_QA = {
 }
 
 CHAT_QS = list(HARDCODED_QA.keys())
-
-# Build the JS lookup object from hardcoded Q&A
 qa_js_entries = []
 for q, (body, action) in HARDCODED_QA.items():
-    q_esc     = q.replace("'", "\\'")
-    body_esc  = body.replace("'", "\\'").replace("\n", " ")
-    action_esc= action.replace("'", "\\'").replace("\n", " ")
+    q_esc = q.replace("'", "\\'")
+    body_esc = body.replace("'", "\\'").replace("\n", " ")
+    action_esc = action.replace("'", "\\'").replace("\n", " ")
     qa_js_entries.append(f"  '{q_esc}': {{ body: '{body_esc}', action: '{action_esc}' }}")
-
 QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
 
-CHAT_HTML = """
-<!DOCTYPE html>
-<html><head>
-<style>body{margin:0;padding:0;background:transparent;}</style>
-</head>
-<body>
-<script>
+CHAT_HTML = """<!DOCTYPE html><html><head><style>body{margin:0;padding:0;background:transparent;}</style></head><body><script>
 (function() {
   const QUESTIONS = """ + json.dumps(CHAT_QS) + """;
   const QA = """ + QA_JS + """;
-  const P = window.parent;
-  const PD = P.document;
-
+  const P = window.parent, PD = P.document;
   if (PD.getElementById('sc-bubble')) return;
-
   const style = PD.createElement('style');
   style.id = 'sc-styles';
   style.textContent = `
-    @keyframes sc-slideUp {
-      from { opacity:0; transform:translateY(14px) scale(.97); }
-      to   { opacity:1; transform:translateY(0)    scale(1);   }
-    }
-    @keyframes sc-msgIn  { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes sc-blink  { 0%,100%{opacity:.25} 50%{opacity:1} }
-    @keyframes sc-glow   { 0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.45)} 50%{box-shadow:0 4px 32px rgba(37,99,235,.8)} }
-
-    #sc-bubble {
-      position:fixed; bottom:24px; right:24px; z-index:99999;
-      width:54px; height:54px; border-radius:50%; border:none; cursor:pointer;
-      background:linear-gradient(135deg,#2563eb,#0891b2);
-      font-size:22px; display:flex; align-items:center; justify-content:center;
-      animation: sc-glow 3s ease-in-out infinite;
-      transition:transform .18s;
-    }
-    #sc-bubble:hover { transform:scale(1.1); }
-    #sc-badge {
-      position:absolute; top:-2px; right:-2px;
-      width:17px; height:17px; border-radius:50%;
-      background:#16a34a; border:2px solid #fff;
-      font-size:7px; font-weight:800; color:#fff;
-      display:flex; align-items:center; justify-content:center;
-      pointer-events:none;
-    }
-    #sc-panel {
-      position:fixed; bottom:88px; right:24px; z-index:99998;
-      width:370px; height:520px;
-      background:#fff; border:1px solid #e2e8f0; border-radius:18px;
-      display:none; flex-direction:column; overflow:hidden;
-      box-shadow:0 20px 60px rgba(0,0,0,.18);
-    }
-    #sc-panel.sc-open { display:flex; animation:sc-slideUp .22s ease both; }
-    #sc-head {
-      background:linear-gradient(135deg,#2563eb,#0891b2);
-      padding:12px 15px; display:flex; align-items:center; gap:10px; flex-shrink:0;
-    }
-    #sc-head .sc-av {
-      width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.18);
-      display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0;
-    }
-    #sc-head .sc-info { flex:1; }
-    #sc-head .sc-name { font-weight:700; font-size:13px; color:#fff; font-family:Inter,sans-serif; }
-    #sc-head .sc-stat { font-size:10px; color:rgba(255,255,255,.8); margin-top:2px; font-family:Inter,sans-serif; }
-    #sc-close {
-      background:transparent; border:none; color:rgba(255,255,255,.7);
-      font-size:20px; cursor:pointer; padding:2px 6px; border-radius:5px; font-family:Inter,sans-serif;
-    }
-    #sc-close:hover { color:#fff; background:rgba(255,255,255,.15); }
-    #sc-msgs {
-      flex:1; overflow-y:auto; padding:12px 12px 6px;
-      display:flex; flex-direction:column; gap:8px;
-    }
-    #sc-msgs::-webkit-scrollbar { width:3px; }
-    #sc-msgs::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:3px; }
-    .sc-msg { max-width:87%; animation:sc-msgIn .18s ease both; font-family:Inter,sans-serif; }
-    .sc-msg.sc-user { align-self:flex-end; }
-    .sc-msg.sc-ai   { align-self:flex-start; }
-    .sc-bub-user {
-      background:linear-gradient(135deg,#2563eb,#1d4ed8);
-      color:#fff; padding:9px 13px; border-radius:14px 14px 3px 14px;
-      font-size:12px; line-height:1.65;
-    }
-    .sc-bub-ai {
-      background:#f8fafc; border:1px solid #e2e8f0;
-      color:#1e293b; padding:10px 13px; border-radius:14px 14px 14px 3px;
-      font-size:12px; line-height:1.75;
-    }
-    .sc-action {
-      background:#fffbeb; border-left:3px solid #d97706;
-      padding:7px 10px; margin-top:8px; font-size:11px;
-      color:#92400e; font-weight:600; border-radius:0 6px 6px 0; font-family:Inter,sans-serif;
-    }
-    #sc-chips {
-      padding:0 10px 8px; display:flex; flex-wrap:wrap; gap:5px; flex-shrink:0;
-    }
-    .sc-chip {
-      background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
-      padding:4px 10px; border-radius:20px; font-size:10px; cursor:pointer;
-      transition:all .12s; white-space:nowrap; font-family:Inter,sans-serif;
-    }
-    .sc-chip:hover { background:#dbeafe; border-color:#93c5fd; }
-    .sc-typing { display:flex; gap:4px; align-items:center; }
-    .sc-dot { width:6px; height:6px; border-radius:50%; background:#93c5fd; }
+    @keyframes sc-slideUp { from{opacity:0;transform:translateY(14px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+    @keyframes sc-msgIn   { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes sc-blink   { 0%,100%{opacity:.25} 50%{opacity:1} }
+    @keyframes sc-glow    { 0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.45)} 50%{box-shadow:0 4px 32px rgba(37,99,235,.8)} }
+    #sc-bubble{position:fixed;bottom:24px;right:24px;z-index:99999;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#2563eb,#0891b2);font-size:22px;display:flex;align-items:center;justify-content:center;animation:sc-glow 3s ease-in-out infinite;transition:transform .18s}
+    #sc-bubble:hover{transform:scale(1.1)}
+    #sc-badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;border-radius:50%;background:#16a34a;border:2px solid #fff;font-size:7px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    #sc-panel{position:fixed;bottom:88px;right:24px;z-index:99998;width:370px;height:520px;background:#fff;border:1px solid #e2e8f0;border-radius:18px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+    #sc-panel.sc-open{display:flex;animation:sc-slideUp .22s ease both}
+    #sc-head{background:linear-gradient(135deg,#2563eb,#0891b2);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+    #sc-head .sc-av{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+    #sc-head .sc-name{font-weight:700;font-size:13px;color:#fff;font-family:Inter,sans-serif}
+    #sc-head .sc-stat{font-size:10px;color:rgba(255,255,255,.8);margin-top:2px;font-family:Inter,sans-serif}
+    #sc-close{background:transparent;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;padding:2px 6px;border-radius:5px}
+    #sc-close:hover{color:#fff;background:rgba(255,255,255,.15)}
+    #sc-msgs{flex:1;overflow-y:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:8px}
+    #sc-msgs::-webkit-scrollbar{width:3px}
+    #sc-msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
+    .sc-msg{max-width:87%;animation:sc-msgIn .18s ease both;font-family:Inter,sans-serif}
+    .sc-msg.sc-user{align-self:flex-end}
+    .sc-msg.sc-ai{align-self:flex-start}
+    .sc-bub-user{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.65}
+    .sc-bub-ai{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}
+    .sc-action{background:#fffbeb;border-left:3px solid #d97706;padding:7px 10px;margin-top:8px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0}
+    #sc-chips{padding:0 10px 8px;display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+    .sc-chip{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:4px 10px;border-radius:20px;font-size:10px;cursor:pointer;transition:all .12s;white-space:nowrap}
+    .sc-chip:hover{background:#dbeafe;border-color:#93c5fd}
+    .sc-typing{display:flex;gap:4px;align-items:center}
+    .sc-dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}
     .sc-dot:nth-child(1){animation:sc-blink 1.2s 0s infinite}
     .sc-dot:nth-child(2){animation:sc-blink 1.2s .2s infinite}
     .sc-dot:nth-child(3){animation:sc-blink 1.2s .4s infinite}
   `;
   PD.head.appendChild(style);
-
   const wrap = PD.createElement('div');
   wrap.id = 'sc-root';
-  wrap.innerHTML = `
-    <button id="sc-bubble" onclick="scToggle()">
-      🤖<div id="sc-badge">AI</div>
-    </button>
+  wrap.innerHTML = `<button id="sc-bubble" onclick="scToggle()">🤖<div id="sc-badge">AI</div></button>
     <div id="sc-panel">
       <div id="sc-head">
         <div class="sc-av">🤖</div>
-        <div class="sc-info">
-          <div class="sc-name">Shopee AI Analyst</div>
-          <div class="sc-stat">● Instant insights · tap a question below</div>
-        </div>
+        <div style="flex:1"><div class="sc-name">Shopee AI Analyst</div><div class="sc-stat">● Instant insights · tap a question below</div></div>
         <button id="sc-close" onclick="scToggle()">×</button>
       </div>
       <div id="sc-msgs"></div>
       <div id="sc-chips"></div>
-    </div>
-  `;
+    </div>`;
   PD.body.appendChild(wrap);
-
-  let scOpen = false, scInited = false, scLoading = false;
-
-  P.scToggle = function() {
-    scOpen = !scOpen;
-    PD.getElementById('sc-panel').classList.toggle('sc-open', scOpen);
-    if (scOpen && !scInited) {
-      scInited = true;
-      scAddMsg('ai', "👋 Hi! I'm your Shopee analyst. Tap a question below to get instant insights.");
-      scRenderChips();
-    }
-  };
-
-  function scRenderChips() {
-    const box = PD.getElementById('sc-chips');
-    box.innerHTML = '';
-    QUESTIONS.forEach(q => {
-      const b = PD.createElement('button');
-      b.className = 'sc-chip';
-      b.textContent = q;
-      b.onclick = () => { scDispatch(q); };
-      box.appendChild(b);
-    });
-  }
-
-  function scAddMsg(role, text, actionText) {
-    const div = PD.createElement('div');
-    div.className = 'sc-msg ' + (role === 'user' ? 'sc-user' : 'sc-ai');
-    if (role === 'user') {
-      div.innerHTML = '<div class="sc-bub-user">' + scEsc(text) + '</div>';
-    } else {
-      let inner = '<div class="sc-bub-ai">' + scEsc(text);
-      if (actionText) inner += '<div class="sc-action">⚡ Action: ' + scEsc(actionText) + '</div>';
-      inner += '</div>';
-      div.innerHTML = inner;
-    }
-    PD.getElementById('sc-msgs').appendChild(div);
-    scScrollBottom();
-  }
-
-  function scShowTyping() {
-    const div = PD.createElement('div');
-    div.id = 'sc-typing'; div.className = 'sc-msg sc-ai';
-    div.innerHTML = '<div class="sc-bub-ai"><div class="sc-typing"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div></div>';
-    PD.getElementById('sc-msgs').appendChild(div);
-    scScrollBottom();
-  }
-  function scHideTyping() { const t = PD.getElementById('sc-typing'); if (t) t.remove(); }
-  function scScrollBottom() { const m = PD.getElementById('sc-msgs'); m.scrollTop = m.scrollHeight; }
-  function scEsc(t) {
-    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');
-  }
-
-  function scDispatch(q) {
-    if (scLoading) return;
-    scAddMsg('user', q);
-    scLoading = true;
-    scShowTyping();
-    // Simulate thinking with a short delay
-    setTimeout(() => {
-      scHideTyping();
-      const qa = QA[q];
-      if (qa) {
-        scAddMsg('ai', qa.body, qa.action);
-      } else {
-        scAddMsg('ai', "I don't have a preset answer for that question yet. Try one of the suggested questions below!");
-      }
-      scLoading = false;
-    }, 900);
-  }
-
+  let scOpen=false,scInited=false,scLoading=false;
+  P.scToggle=function(){scOpen=!scOpen;PD.getElementById('sc-panel').classList.toggle('sc-open',scOpen);if(scOpen&&!scInited){scInited=true;scAddMsg('ai',"👋 Hi! I'm your Shopee analyst. Tap a question below to get instant insights.");scRenderChips();}};
+  function scRenderChips(){const box=PD.getElementById('sc-chips');box.innerHTML='';QUESTIONS.forEach(q=>{const b=PD.createElement('button');b.className='sc-chip';b.textContent=q;b.onclick=()=>{scDispatch(q);};box.appendChild(b);});}
+  function scAddMsg(role,text,actionText){const div=PD.createElement('div');div.className='sc-msg '+(role==='user'?'sc-user':'sc-ai');if(role==='user'){div.innerHTML='<div class="sc-bub-user">'+scEsc(text)+'</div>';}else{let inner='<div class="sc-bub-ai">'+scEsc(text);if(actionText)inner+='<div class="sc-action">⚡ Action: '+scEsc(actionText)+'</div>';inner+='</div>';div.innerHTML=inner;}PD.getElementById('sc-msgs').appendChild(div);scScrollBottom();}
+  function scShowTyping(){const div=PD.createElement('div');div.id='sc-typing';div.className='sc-msg sc-ai';div.innerHTML='<div class="sc-bub-ai"><div class="sc-typing"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div></div>';PD.getElementById('sc-msgs').appendChild(div);scScrollBottom();}
+  function scHideTyping(){const t=PD.getElementById('sc-typing');if(t)t.remove();}
+  function scScrollBottom(){const m=PD.getElementById('sc-msgs');m.scrollTop=m.scrollHeight;}
+  function scEsc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');}
+  function scDispatch(q){if(scLoading)return;scAddMsg('user',q);scLoading=true;scShowTyping();setTimeout(()=>{scHideTyping();const qa=QA[q];if(qa){scAddMsg('ai',qa.body,qa.action);}else{scAddMsg('ai',"I don't have a preset answer for that. Try one of the questions below!");}scLoading=false;},900);}
 })();
-</script>
-</body></html>
-"""
+</script></body></html>"""
 
 components.html(CHAT_HTML, height=0, scrolling=False)
