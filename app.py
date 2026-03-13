@@ -598,6 +598,140 @@ def generate_pdf_report(monthly, brands, campaigns, summary,
     buf.seek(0)
     return buf.read()
 
+# ── Fixed AI Segmentation Data ────────────────────────────────────────────────
+CUSTOMER_SEGMENTS = [
+    {
+        "name": "Discount Hunters",   "emoji": "🏷️", "pct": 34, "color": "#f97316",
+        "bg": "#fff7ed", "border": "#fb923c",
+        "traits": ["Voucher usage 90%+", "AOV S$180–S$320", "High mobile, Flash Sale driven"],
+        "insight": "Price-sensitive buyers who only convert with a deal. Voucher cap at S$500 min basket could reduce leakage.",
+        "action": "Replace blanket vouchers with tiered discounts — S$5 off S$200, S$15 off S$500.",
+        "tag": "HIGH VOLUME · LOW MARGIN",  "tag_col": "#b45309"
+    },
+    {
+        "name": "Premium Tech Buyers", "emoji": "💎", "pct": 18, "color": "#2563eb",
+        "bg": "#eff6ff", "border": "#3b82f6",
+        "traits": ["AOV S$800–S$1,800", "LG & Philips focused", "PayNow / Credit Card payers"],
+        "insight": "Your highest-value segment — 18% of customers but ~52% of GMV. Low voucher usage, high intent.",
+        "action": "Priority: exclusive early access to new LG launches + free delivery threshold at S$400.",
+        "tag": "LOW VOLUME · HIGHEST GMV",  "tag_col": "#1d4ed8"
+    },
+    {
+        "name": "One-Time Browsers",   "emoji": "👀", "pct": 29, "color": "#64748b",
+        "bg": "#f8fafc", "border": "#94a3b8",
+        "traits": ["Single purchase only", "AOV S$45–S$180", "Anker / COSRX / Nike buyers"],
+        "insight": "29% of customers who never returned. Mostly Fashion, Beauty, and accessories. Activation gap.",
+        "action": "7-day post-purchase email with 'Complete Your Setup' bundles — cross-sell Anker to Nike buyers.",
+        "tag": "HIGH CHURN RISK",           "tag_col": "#b91c1c"
+    },
+    {
+        "name": "SPayLater Power Users","emoji": "💳", "pct": 12, "color": "#7c3aed",
+        "bg": "#faf5ff", "border": "#a855f7",
+        "traits": ["SPayLater 100% payment", "AOV S$420–S$620", "Mid-range Electronics buyers"],
+        "insight": "Budget-flexible buyers who spend more when they can spread payments. 12% of customers, ~22% of GMV.",
+        "action": "Promote SPayLater 0% instalment on LG / Philips bundles above S$600 to lift basket size.",
+        "tag": "GROWTH SEGMENT",            "tag_col": "#6d28d9"
+    },
+    {
+        "name": "Loyal Repeaters",     "emoji": "⭐", "pct": 7,  "color": "#15803d",
+        "bg": "#f0fdf4", "border": "#22c55e",
+        "traits": ["2+ purchases, avg 3.6 orders", "AOV S$380–S$500", "Wednesday & Double Day active"],
+        "insight": "Only 3.6% repeat rate but these buyers generate 3x lifetime value. Critical to grow this segment.",
+        "action": "Launch a Shopee Coins loyalty tier — 2% cashback on repeat orders above S$300.",
+        "tag": "MOST VALUABLE · GROW THIS",  "tag_col": "#15803d"
+    },
+]
+
+PRODUCT_SEGMENTS = [
+    {
+        "name": "Revenue Pillar",      "emoji": "🏛️", "brands": ["LG"],      "pct_gmv": 64, "color": "#2563eb",
+        "bg": "#eff6ff", "border": "#3b82f6",
+        "traits": ["S$227K GMV, 158 orders", "AOV S$1,438 — ultra premium", "+12.3% MoM growing"],
+        "insight": "Single-brand revenue engine. Irreplaceable short-term but concentration at 64% is the #1 business risk.",
+        "action": "Protect LG listing quality & stock. Simultaneously onboard 1 new Electronics brand per quarter.",
+        "risk": "HIGH", "risk_col": "#b91c1c", "risk_bg": "#fee2e2"
+    },
+    {
+        "name": "Steady Performer",    "emoji": "📈", "brands": ["Philips"],  "pct_gmv": 19, "color": "#0e7490",
+        "bg": "#f0fdfa", "border": "#14b8a6",
+        "traits": ["S$67K GMV, 164 orders", "AOV S$414 — mid-premium", "+4.1% MoM stable growth"],
+        "insight": "Consistent performer across all months. High order volume = good search velocity. Healthy diversifier.",
+        "action": "Bundle Philips + Anker accessories (e.g. Philips blender + Anker charger) to lift Anker AOV.",
+        "risk": "LOW", "risk_col": "#15803d", "risk_bg": "#dcfce7"
+    },
+    {
+        "name": "High Frequency · Low AOV","emoji": "⚡", "brands": ["Anker","Nike"], "pct_gmv": 14, "color": "#d97706",
+        "bg": "#fffbeb", "border": "#f59e0b",
+        "traits": ["Combined 313 orders (2nd most)", "AOV S$149–S$183 — low basket", "-2.8% to -6.2% MoM declining"],
+        "insight": "High transaction volume but low AOV drags revenue. Nike & Anker together = 39% of order count but only 14% of GMV.",
+        "action": "Create 'Nike x Anker Sport Bundle' — shoes + wireless earbuds. Target S$280+ basket to lift combined AOV 60%.",
+        "risk": "MEDIUM", "risk_col": "#b45309", "risk_bg": "#fef3c7"
+    },
+    {
+        "name": "Hidden Gem",          "emoji": "💡", "brands": ["COSRX"],   "pct_gmv": 2,  "color": "#7c3aed",
+        "bg": "#faf5ff", "border": "#a855f7",
+        "traits": ["165 orders — 3rd highest volume", "AOV only S$45 — lowest", "-15.4% MoM — fastest decline"],
+        "insight": "COSRX has strong order frequency (skincare repurchase behaviour) but the lowest AOV. Bundle potential is huge.",
+        "action": "Create COSRX skincare routine bundles (cleanser + serum + moisturiser) targeting S$120+ basket.",
+        "risk": "MEDIUM", "risk_col": "#b45309", "risk_bg": "#fef3c7"
+    },
+]
+
+def _seg_customer_cards(segments, cols=5):
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
+        <span style="font-size:16px">🧠</span>
+        <span style="font-weight:800;font-size:15px;color:#0f172a">AI Customer Segments</span>
+        <span style="background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #bfdbfe">AI ANALYSIS</span>
+    </div>""", unsafe_allow_html=True)
+    c_cols = st.columns(len(segments))
+    for i, seg in enumerate(segments):
+        with c_cols[i]:
+            st.markdown(f"""<div style="background:{seg['bg']};border:1.5px solid {seg['border']};border-radius:10px;padding:13px 14px;height:100%">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                    <span style="font-size:20px">{seg['emoji']}</span>
+                    <span style="background:{seg['border']};color:white;font-size:11px;font-weight:800;padding:2px 8px;border-radius:10px">{seg['pct']}%</span>
+                </div>
+                <div style="font-weight:800;font-size:12px;color:#0f172a;margin-bottom:6px">{seg['name']}</div>
+                <ul style="margin:0 0 8px 14px;padding:0">{''.join(f'<li style="font-size:10.5px;color:#475569;margin-bottom:2px">{t}</li>' for t in seg['traits'])}</ul>
+                <div style="background:rgba(0,0,0,.05);border-radius:6px;padding:7px 8px;margin-bottom:6px">
+                    <div style="font-size:9.5px;font-weight:700;color:{seg['color']};text-transform:uppercase;margin-bottom:2px">💡 Insight</div>
+                    <div style="font-size:10.5px;color:#334155;line-height:1.5">{seg['insight']}</div>
+                </div>
+                <div style="background:{seg['bg']};border-left:3px solid {seg['border']};padding:5px 8px;border-radius:0 4px 4px 0">
+                    <div style="font-size:9px;font-weight:700;color:{seg['tag_col']};margin-bottom:2px">{seg['tag']}</div>
+                    <div style="font-size:10px;color:#334155">⚡ {seg['action']}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+def _seg_product_cards(segments):
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
+        <span style="font-size:16px">🧠</span>
+        <span style="font-weight:800;font-size:15px;color:#0f172a">AI Product Segments</span>
+        <span style="background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #bfdbfe">AI ANALYSIS</span>
+    </div>""", unsafe_allow_html=True)
+    p_cols = st.columns(len(segments))
+    for i, seg in enumerate(segments):
+        with p_cols[i]:
+            brands_html = " ".join(f'<span style="background:{seg["bg"]};border:1px solid {seg["border"]};color:{seg["color"]};padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700">{b}</span>' for b in seg['brands'])
+            st.markdown(f"""<div style="background:{seg['bg']};border:1.5px solid {seg['border']};border-radius:10px;padding:13px 14px;height:100%">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                    <span style="font-size:20px">{seg['emoji']}</span>
+                    <span style="background:{seg['risk_bg']};color:{seg['risk_col']};font-size:9px;font-weight:800;padding:2px 7px;border-radius:8px">Risk: {seg['risk']}</span>
+                </div>
+                <div style="font-weight:800;font-size:12px;color:#0f172a;margin-bottom:4px">{seg['name']}</div>
+                <div style="margin-bottom:6px">{brands_html}</div>
+                <div style="font-size:10px;color:#64748b;margin-bottom:6px">GMV Share: <b style="color:#0f172a">{seg['pct_gmv']}%</b></div>
+                <ul style="margin:0 0 8px 14px;padding:0">{''.join(f'<li style="font-size:10.5px;color:#475569;margin-bottom:2px">{t}</li>' for t in seg['traits'])}</ul>
+                <div style="background:rgba(0,0,0,.05);border-radius:6px;padding:7px 8px;margin-bottom:5px">
+                    <div style="font-size:9.5px;font-weight:700;color:{seg['color']};text-transform:uppercase;margin-bottom:2px">💡 Insight</div>
+                    <div style="font-size:10.5px;color:#334155;line-height:1.5">{seg['insight']}</div>
+                </div>
+                <div style="background:{seg['bg']};border-left:3px solid {seg['border']};padding:5px 8px;border-radius:0 4px 4px 0">
+                    <div style="font-size:10px;color:#334155">⚡ {seg['action']}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -646,7 +780,7 @@ with st.sidebar:
 
     view = st.selectbox("View", [
         "📊 Overview","📅 MoM Analysis","📆 Weekly",
-        "📆 Daily Analysis","📣 Campaigns","📍 Geography","🎯 Scenario Planning","🧠 AI Segmentation"
+        "📆 Daily Analysis","📣 Campaigns","📍 Geography","🎯 Scenario Planning"
     ], label_visibility="collapsed")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Filters</p>', unsafe_allow_html=True)
@@ -722,6 +856,10 @@ tot_ord = filt_m["orders"].sum()
 if "Overview" in view:
     st.markdown('<div class="section-header">📊 Overview</div>',unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Shopee Singapore · Oct 2025 – Jan 2026 · 800 orders</div>',unsafe_allow_html=True)
+    # ── AI Customer Segmentation panel
+    with st.expander("🧠 AI Customer Segments — click to expand", expanded=False):
+        _seg_customer_cards(CUSTOMER_SEGMENTS)
+
     last = actual_monthly.iloc[-1]
     c1,c2,c3,c4 = st.columns(4)
     for col,icon,label,val,sub,color,pct in [
@@ -1020,6 +1158,11 @@ elif "Campaigns" in view:
         st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
         st.markdown('</div>',unsafe_allow_html=True)
 
+    # ── AI Customer Segmentation by buying behaviour
+    st.markdown("---")
+    with st.expander("🧠 AI Customer Segments — who's buying and why", expanded=True):
+        _seg_customer_cards(CUSTOMER_SEGMENTS)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # GEOGRAPHY
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1063,6 +1206,11 @@ elif "Geography" in view:
         st.plotly_chart(fig_b,use_container_width=True,config={"displayModeBar":False})
     st.markdown('</div>',unsafe_allow_html=True)
 
+    # ── AI Product Segmentation by brand strategy
+    st.markdown("---")
+    with st.expander("🧠 AI Product Segments — brand strategy & risk", expanded=True):
+        _seg_product_cards(PRODUCT_SEGMENTS)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCENARIO PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1075,49 +1223,74 @@ elif "Scenario" in view:
     BASE_MONTHS   = ["Feb","Mar","Apr","May","Jun","Jul"]
     BASE_VOUCHER  = 48.75   # baseline voucher rate for elasticity calc
 
-    st.markdown('<div class="chart-card"><div class="chart-title">📐 Business Levers</div><div class="chart-sub">Drag to model your strategy</div>', unsafe_allow_html=True)
+    # Lever descriptions
+    LEVER_TIPS = {
+        "ord": ("📦 Monthly order growth %",  "Organic growth from SEO, reviews, and repeat traffic. Baseline ~5%/mo based on Oct–Jan trend."),
+        "camp": ("📣 Campaign days / month",   "Each campaign day adds ~8–12 orders. Baseline: 2 campaign days/mo (Double Day + 1 flash)."),
+        "cust": ("👥 New customer growth %",   "New customer acquisition rate month-on-month. Baseline ~4%/mo from paid + organic traffic."),
+        "vr":   ("🎫 Voucher usage %",         "% of orders using a voucher. Lower = less discount cost but also fewer deal-driven orders."),
+    }
+
+    st.markdown('<div class="chart-card"><div class="chart-title">📐 Business Levers</div><div class="chart-sub">All 4 levers directly drive order volume — projection updates instantly</div>', unsafe_allow_html=True)
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         order_growth = st.slider("📦 Monthly order growth %", -20, 40, 5, 1, key="sp_ord")
-        st.caption("Baseline: ~5%/mo")
+        st.caption("Baseline: ~5%/mo from organic")
     with col_b:
-        aov_change = st.slider("💰 AOV change %", -20, 30, 0, 1, key="sp_aov")
-        st.caption("Baseline: S$442")
+        camp_days = st.slider("📣 Campaign days / month", 0, 12, 2, 1, key="sp_camp")
+        st.caption("Baseline: 2 days (1 major + 1 flash)")
     with col_c:
-        repeat_rate = st.slider("🔁 Repeat rate %", 1.0, 20.0, 3.6, 0.1, key="sp_rep", format="%.1f%%")
-        st.caption("Baseline: 3.6% (low)")
+        cust_growth = st.slider("👥 New customer growth %", -10, 30, 4, 1, key="sp_cust")
+        st.caption("Baseline: ~4%/mo new customers")
     with col_d:
         voucher_rate = st.slider("🎫 Voucher usage %", 20.0, 70.0, 48.75, 0.25, key="sp_vr", format="%.2f%%")
         st.caption("Baseline: 48.75%")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Projection model ─────────────────────────────────────────────────────
-    # Voucher elasticity: customers are price-sensitive.
-    # Every 10pp drop in voucher rate → ~4% fewer orders (some buyers need the incentive).
-    # Every 10pp rise → ~3% more orders (vouchers attract deal-seekers).
-    def voucher_order_multiplier(vr):
-        delta_pp = vr - BASE_VOUCHER           # how many pp above/below baseline
-        if delta_pp >= 0:
-            return 1 + (delta_pp / 10) * 0.03  # more vouchers → slightly more orders
-        else:
-            return 1 + (delta_pp / 10) * 0.04  # fewer vouchers → fewer orders
+    # ── How each lever drives orders ──────────────────────────────────────────
+    # order_growth:  direct compound monthly order multiplier
+    # camp_days:     each campaign day adds ~10 orders (avg of Double Day 172/17d, Flash 136/14d)
+    #                baseline 2 days = 20 bonus orders baked in; slider shows delta from baseline
+    # cust_growth:   new customers at baseline 80% first-purchase conversion, avg 1.1 orders each
+    #                every +1% cust growth on 772 base ≈ +0.8 new customers/mo ≈ +0.9 orders/mo
+    # voucher_rate:  every 10pp change → ±3–4% orders (deal-seekers / price-sensitive buyers)
 
-    def sp_project(ord_gr, aov_ch, vr, rep):
+    BASE_VOUCHER  = 48.75
+    BASE_CAMP     = 2         # baseline campaign days
+    BASE_CUST_GR  = 4.0       # baseline new cust growth %
+    AVG_DISC      = 10        # S$10 avg voucher discount
+
+    def voucher_order_mult(vr):
+        delta = vr - BASE_VOUCHER
+        return 1 + (delta / 10) * (0.03 if delta >= 0 else 0.04)
+
+    def camp_order_bonus(days):
+        # Each day above baseline adds ~10 orders; each day below loses ~8
+        delta = days - BASE_CAMP
+        return delta * (10 if delta >= 0 else 8)
+
+    def cust_order_boost(cgr, base_orders):
+        # Additional orders from net-new customers each month
+        # Every 1% above baseline new-cust growth ≈ +0.9 incremental orders/mo
+        delta = cgr - BASE_CUST_GR
+        return delta * 0.9
+
+    def sp_project(ord_gr, camp_d, cgr, vr):
         rows   = []
-        orders = float(BASE_ORDERS) * voucher_order_multiplier(vr)
-        aov    = BASE_AOV * (1 + aov_ch / 100)
-        vd     = 10   # fixed avg discount S$10
+        orders = float(BASE_ORDERS) * voucher_order_mult(vr)
+        aov    = BASE_AOV           # AOV held constant — model focuses on order volume drivers
         for mo in BASE_MONTHS:
-            orders      = max(40, orders * (1 + ord_gr / 100))
-            vcost       = orders * (vr / 100) * vd
-            gross       = orders * aov
-            repeat_rev  = gross * (rep / 100) * 0.15
-            net         = gross + repeat_rev - vcost
+            orders  = max(40, orders * (1 + ord_gr / 100))
+            orders += camp_order_bonus(camp_d)
+            orders += cust_order_boost(cgr, orders)
+            orders  = max(40, orders)
+            vcost   = orders * (vr / 100) * AVG_DISC
+            net     = orders * aov - vcost
             rows.append({"month": mo, "orders": int(orders), "aov": round(aov),
                          "voucher_cost": round(vcost), "net": round(net)})
         return pd.DataFrame(rows)
 
-    proj      = sp_project(order_growth, aov_change, voucher_rate, repeat_rate)
+    proj      = sp_project(order_growth, camp_days, cust_growth, voucher_rate)
     total_rev = proj["net"].sum()
     total_ord = proj["orders"].sum()
     total_vc  = proj["voucher_cost"].sum()
@@ -1166,12 +1339,12 @@ elif "Scenario" in view:
         tbl = proj.copy()
         tbl["Revenue"]      = tbl["net"].apply(fmt_s)
         tbl["Orders"]       = tbl["orders"]
-        tbl["AOV"]          = tbl["aov"].apply(lambda x: f"S${x}")
         tbl["Voucher Cost"] = tbl["voucher_cost"].apply(fmt_s)
+        tbl["Net Margin"]   = ((tbl["net"] / (tbl["orders"] * BASE_AOV)) * 100).apply(lambda x: f"{x:.1f}%")
         tbl["MoM"] = tbl["net"].pct_change().apply(
             lambda x: f"{'↑' if x>0 else '↓'}{abs(x)*100:.1f}%" if pd.notna(x) else "—"
         )
-        st.dataframe(tbl[["month","Revenue","MoM","Orders","AOV","Voucher Cost"]].rename(columns={"month":"Month"}),
+        st.dataframe(tbl[["month","Revenue","MoM","Orders","Net Margin","Voucher Cost"]].rename(columns={"month":"Month"}),
                      use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1180,15 +1353,15 @@ elif "Scenario" in view:
         base_total = proj["net"].sum()
         def nudge(**kw):
             return sp_project(
-                kw.get("og", order_growth), kw.get("ac", aov_change),
-                kw.get("vr", voucher_rate), kw.get("rr", repeat_rate)
+                kw.get("og", order_growth), kw.get("cd", camp_days),
+                kw.get("cg", cust_growth),  kw.get("vr", voucher_rate)
             )["net"].sum()
 
         levers = [
-            ("📦 +5% orders",       nudge(og=order_growth+5)                 - base_total),
-            ("💎 +5% AOV",          nudge(ac=aov_change+5)                   - base_total),
-            ("🔁 +3% repeat rate",  nudge(rr=repeat_rate+3)                  - base_total),
-            ("🎫 -5% voucher rate", nudge(vr=max(20, voucher_rate-5))        - base_total),
+            ("📦 +5% order growth",      nudge(og=order_growth+5)              - base_total),
+            ("📣 +2 campaign days/mo",   nudge(cd=camp_days+2)                 - base_total),
+            ("👥 +5% new customers/mo",  nudge(cg=cust_growth+5)              - base_total),
+            ("🎫 -5% voucher rate",      nudge(vr=max(20, voucher_rate-5))     - base_total),
         ]
         levers.sort(key=lambda x: x[1], reverse=True)
         max_impact = max(abs(v) for _, v in levers) or 1
@@ -1213,45 +1386,46 @@ elif "Scenario" in view:
     st.markdown('<div class="chart-card"><div class="chart-title">🤖 Ask the Analyst</div><div class="chart-sub">Click any question for an instant answer</div>', unsafe_allow_html=True)
     SP_QA = {
         "Is my projection realistic?": (
-            "Yes — your settings are grounded in real data. Your Oct–Jan monthly average was S$88,494, "
-            "and with positive order growth and AOV adjustments applied, the 6-month outlook is achievable. "
-            "The key risk is sustaining compound order growth — even 5% month-on-month adds up significantly "
-            "and assumes no major supply or demand disruption.",
-            "Validate your order growth assumption against last year's Feb–Jul seasonality before committing budget."
+            "Yes — at 5% monthly order growth + 2 campaign days, your 6-month projection is well within range. "
+            "Your Oct–Jan baseline averaged 200 orders/month. The model compounds order growth each month, "
+            "so the biggest risk is sustaining growth in months 4–6 when the base is higher. "
+            "Feb–Jul historically sees steadier demand than the holiday spike-dip cycle.",
+            "Cross-check: if you ran 2 campaigns in Feb and hit ~210 orders, you're on track."
         ),
-        "Which lever should I focus on first?": (
-            "AOV improvement delivers the highest return because it applies to every single order. "
-            "A 5% AOV increase on 200 monthly orders adds roughly S$4,400/month — S$26,400 over 6 months. "
-            "Your repeat rate at 3.6% is also far below the industry average of 15–20%, making it your biggest "
-            "untapped lever for recurring revenue without extra acquisition cost.",
-            "Focus on upselling higher-value Electronics bundles this week to lift AOV immediately."
+        "Which lever moves orders the most?": (
+            "Campaign days is the single highest-impact lever for orders. Each campaign day adds ~10 incremental orders "
+            "based on your Double Day (172 orders over event) and Flash Sale (136 orders) data. "
+            "Going from 2 to 4 campaign days adds ~20 orders/month — equivalent to 10% organic growth "
+            "but achieved in a single day. New customer growth compounds over time and is the best long-term lever.",
+            "Add 1 mid-month Wednesday flash sale — your peak day — and track the order lift vs your baseline."
         ),
-        "What's the risk if orders drop 10%?": (
-            "A 10% order drop from 200/month would reduce monthly revenue by approximately S$8,800, "
-            "totalling S$53,000 lost over 6 months. Given your 64% LG concentration, any supply disruption "
-            "compounds this quickly. Note: lower voucher rates also reduce orders slightly due to price elasticity.",
-            "Build a 10% demand buffer by diversifying campaigns across at least 3 channels this month."
+        "What happens if I run more campaigns?": (
+            "Every campaign day above your 2-day baseline adds approximately 10 orders and S$4,420 in revenue "
+            "(at S$442 AOV). Running 4 campaign days/month instead of 2 adds ~120 orders and S$53K over 6 months. "
+            "However, too many campaigns train buyers to wait for deals — beyond 8 days/month, "
+            "organic orders start cannibalising. Sweet spot is 4–6 campaign days for your store size.",
+            "Test: add 1 extra flash sale in March and compare March organic orders to February as a control."
+        ),
+        "How does new customer growth affect orders?": (
+            "New customer growth has a compounding effect — each new customer added this month can return next month. "
+            "At 4% baseline, you're acquiring ~31 new customers/month from your 772 base. "
+            "Pushing to 8% doubles that to ~62 new customers — at 80% first-purchase rate, "
+            "that's +25 incremental orders/month, building to +150 orders by month 6.",
+            "Invest S$500/month in Shopee Ads targeting Woodlands and Tampines — your top districts — to accelerate new customer growth."
         ),
         "How can I reduce voucher leakage?": (
-            "Your voucher usage sits at 48.75% — nearly half of all orders use a voucher averaging S$10 discount. "
-            "Dropping usage to 40% saves approximately S$3,500 over 6 months but will also reduce orders slightly "
-            "as some price-sensitive buyers drop off. Restricting vouchers to new customers or setting a S$500 "
-            "minimum order value protects margin without losing high-intent buyers.",
-            "Set a S$500 minimum order threshold for voucher redemption this week and monitor conversion impact."
+            "Voucher usage at 48.75% costs S$3,900/period at S$10 avg discount. "
+            "Reducing to 40% saves ~S$700/month but loses ~4% of deal-driven orders. "
+            "The net effect depends on your margin — at S$442 AOV, losing 8 orders/month "
+            "costs more than the S$700 saved. Smarter play: keep voucher rate but raise the minimum basket to S$500.",
+            "Set S$500 minimum basket for vouchers this week. Discount Hunters segment (~34% of customers) will still convert at S$500+."
         ),
-        "What AOV should I target for S$600K revenue?": (
-            "To hit S$600K over 6 months with current order growth, you'd need a monthly AOV of approximately "
-            "S$480–S$500 — around 8–13% above your current S$442 baseline. "
-            "This is achievable by shifting the product mix toward higher-value Electronics bundles. "
-            "Notably, your best week already hit S$738 AOV in W05 January, proving high-value orders are very possible.",
-            "Create 3 Electronics bundle offers at S$500+ this week to start shifting the AOV mix upward."
-        ),
-        "Why do orders change when I adjust vouchers?": (
-            "Voucher rate affects orders because customers are price-sensitive — vouchers are a demand driver, "
-            "not just a cost. In this model, every 10pp drop in voucher usage reduces orders by ~4% as some "
-            "deal-seeking buyers drop off. Conversely, increasing vouchers attracts ~3% more orders. "
-            "This reflects real Shopee behaviour where promotions drive significant incremental volume.",
-            "Test a 5pp voucher reduction with a parallel loyalty incentive to offset the order drop."
+        "What order volume do I need for S$600K?": (
+            "At your fixed AOV of S$442 and 48.75% voucher usage (S$10 avg discount), "
+            "you need approximately 1,430 total orders over 6 months — or about 238 orders/month. "
+            "That's 19% above your current 200/month baseline. "
+            "Achievable with: +8% organic growth + 3 campaign days/month + 5% new customer growth combined.",
+            "Set your sliders to: Order Growth 8%, Campaign Days 3, New Customers 7% and watch the projection hit S$600K."
         ),
     }
     if "sp_chat" not in st.session_state: st.session_state.sp_chat = []
@@ -1287,247 +1461,6 @@ elif "Scenario" in view:
 # ══════════════════════════════════════════════════════════════════════════════
 # FLOATING AI CHATBOT
 # ══════════════════════════════════════════════════════════════════════════════
-# ── 🧠 AI Segmentation ────────────────────────────────────────────────────────
-elif "AI Segmentation" in view:
-    st.markdown('<div class="section-header">🧠 AI Customer & Product Segmentation</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Claude analyses your data and segments customers and products into strategic groups</div>', unsafe_allow_html=True)
-
-    # ── Segment data context passed to AI ─────────────────────────────────────
-    DATA_CONTEXT = """
-You are analysing a Shopee Singapore e-commerce store. Here is the full business data:
-
-CUSTOMERS (772 total):
-- Repeat purchase rate: 3.6% (only 28 customers bought more than once)
-- Average order value: S$442
-- Revenue per customer: S$458
-- Top districts: Woodlands (S$67,353), Tampines (S$62,847), Bukit Timah (S$58,921), Jurong (S$44,898 — weakest, 27% below top)
-- 48.75% of customers used vouchers (avg S$10 discount)
-- Payment mix: PayNow 29.5%, ShopeePay 26%, SPayLater 22.6%, Credit Card 21.8%
-- Device: 68% mobile, 32% desktop
-
-PRODUCTS / BRANDS:
-- LG Electronics: S$227,248 revenue, 158 orders, AOV S$1,438 — dominates 64% of GMV
-- Philips: S$67,817, 164 orders, AOV S$414
-- Nike: S$26,834, 147 orders, AOV S$183
-- Anker: S$24,707, 166 orders, AOV S$149
-- COSRX (skincare): S$7,371, 165 orders, AOV S$45
-
-CAMPAIGNS:
-- Double Day: S$89,029, 172 orders, AOV S$518 — best performer
-- Mega Campaign: S$75,121, 168 orders, AOV S$447
-- Brand Day: S$68,307, 161 orders, AOV S$424
-- Flash Sale: S$63,142, 136 orders, AOV S$464
-
-MONTHLY TREND:
-- Oct 2025: S$88,216 (218 orders)
-- Nov 2025: S$94,439 (201 orders, +7.1%)
-- Dec 2025: S$96,386 (204 orders, +2.1%) — peak
-- Jan 2026: S$74,936 (177 orders, -22.3%) — post-holiday dip
-- Feb 2026 forecast: S$82,000 (+9.4% recovery)
-"""
-
-    SEGMENT_TYPES = {
-        "👥 Customer Segments": {
-            "prompt": DATA_CONTEXT + """
-Segment these 772 Shopee customers into 5 distinct strategic groups.
-For each segment provide:
-- A catchy name (e.g. "Discount Hunters", "Premium Electronics Buyers")
-- Estimated % of customer base
-- Key behavioural traits (2-3 bullet points)
-- Average order value range
-- Best campaign to target them
-- One specific action to grow/retain this segment
-
-Format as JSON array with fields: name, emoji, pct, color (one of: blue/green/amber/red/purple/teal), traits (array of 3 strings), aov_range, best_campaign, action
-
-Return ONLY valid JSON, no markdown, no explanation.
-""",
-            "cache_key": "seg_customers"
-        },
-        "📦 Product Segments": {
-            "prompt": DATA_CONTEXT + """
-Segment these products/brands into 5 strategic groups based on performance, AOV, and growth trajectory.
-For each segment provide:
-- A strategic category name (e.g. "Hero SKUs", "Hidden Gems", "At-Risk Items")
-- Which brands/products fall in this group
-- Estimated % of total GMV
-- Key characteristics (2-3 bullet points)
-- Strategic recommendation (one clear action)
-- Risk level: Low / Medium / High
-
-Format as JSON array with fields: name, emoji, pct_gmv, brands (array), color (one of: blue/green/amber/red/purple/teal), traits (array of 3 strings), recommendation, risk
-
-Return ONLY valid JSON, no markdown, no explanation.
-"""
-        }
-    }
-
-    COLOR_MAP = {
-        "blue":   {"bg":"#eff6ff","border":"#3b82f6","text":"#1d4ed8","tag":"#dbeafe"},
-        "green":  {"bg":"#f0fdf4","border":"#22c55e","text":"#15803d","tag":"#dcfce7"},
-        "amber":  {"bg":"#fffbeb","border":"#f59e0b","text":"#b45309","tag":"#fef3c7"},
-        "red":    {"bg":"#fef2f2","border":"#ef4444","text":"#b91c1c","tag":"#fee2e2"},
-        "purple": {"bg":"#faf5ff","border":"#a855f7","text":"#7c3aed","tag":"#f3e8ff"},
-        "teal":   {"bg":"#f0fdfa","border":"#14b8a6","text":"#0f766e","tag":"#ccfbf1"},
-    }
-
-    def call_claude(prompt, cache_key):
-        if cache_key in st.session_state:
-            return st.session_state[cache_key]
-        api_key = get_api_key()
-        if not api_key:
-            return None
-        try:
-            resp = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                         "content-type": "application/json"},
-                json={"model": "claude-sonnet-4-20250514", "max_tokens": 2000,
-                      "messages": [{"role": "user", "content": prompt}]},
-                timeout=30
-            )
-            raw = resp.json()["content"][0]["text"].strip()
-            raw = raw.replace("```json","").replace("```","").strip()
-            result = json.loads(raw)
-            st.session_state[cache_key] = result
-            return result
-        except Exception as e:
-            st.error(f"AI error: {e}")
-            return None
-
-    def render_segment_card(seg, mode="customer"):
-        col = COLOR_MAP.get(seg.get("color","blue"), COLOR_MAP["blue"])
-        traits = seg.get("traits", [])
-        trait_html = "".join(f'<li style="margin-bottom:4px;color:#475569;font-size:12px">{t}</li>' for t in traits)
-
-        if mode == "customer":
-            footer_left  = f'<span style="font-size:11px;color:#64748b">💰 AOV: <b style="color:#0f172a">{seg.get("aov_range","—")}</b></span>'
-            footer_right = f'<span style="font-size:11px;color:#64748b">🎯 <b style="color:#0f172a">{seg.get("best_campaign","—")}</b></span>'
-            action_label = "Action"
-            action_val   = seg.get("action","")
-        else:
-            brands_html = " ".join(
-                f'<span style="background:{col["tag"]};color:{col["text"]};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600">{b}</span>'
-                for b in seg.get("brands",[])
-            )
-            risk = seg.get("risk","Medium")
-            risk_col = {"Low":"#16a34a","Medium":"#d97706","High":"#dc2626"}.get(risk,"#64748b")
-            footer_left  = f'<div style="margin-bottom:6px">{brands_html}</div><span style="font-size:11px;color:#64748b">📊 GMV Share: <b style="color:#0f172a">{seg.get("pct_gmv","—")}%</b></span>'
-            footer_right = f'<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:{col["tag"]};color:{risk_col};font-weight:700">Risk: {risk}</span>'
-            action_label = "Recommendation"
-            action_val   = seg.get("recommendation","")
-
-        pct = seg.get("pct", seg.get("pct_gmv","?"))
-        st.markdown(f"""
-        <div style="background:{col['bg']};border:1.5px solid {col['border']};border-radius:12px;padding:16px 18px;height:100%;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:22px">{seg.get('emoji','📌')}</span>
-                    <div>
-                        <div style="font-weight:800;font-size:14px;color:#0f172a">{seg.get('name','')}</div>
-                        <div style="font-size:11px;color:#64748b">~{pct}% of {"customers" if mode=="customer" else "GMV"}</div>
-                    </div>
-                </div>
-                <div style="background:{col['text']};color:white;font-weight:800;font-size:14px;padding:4px 12px;border-radius:20px">
-                    {pct}%
-                </div>
-            </div>
-            <ul style="margin:0 0 10px 16px;padding:0">{trait_html}</ul>
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">
-                {footer_left}
-                {footer_right}
-            </div>
-            <div style="background:rgba(0,0,0,.04);border-radius:8px;padding:8px 10px">
-                <div style="font-size:10px;font-weight:700;color:{col['text']};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">⚡ {action_label}</div>
-                <div style="font-size:12px;color:#334155">{action_val}</div>
-            </div>
-        </div>""", unsafe_allow_html=True)
-
-    # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab1, tab2 = st.tabs(["👥 Customer Segments", "📦 Product Segments"])
-
-    with tab1:
-        api_key = get_api_key()
-        if not api_key:
-            st.warning("⚠️ Add your Anthropic API key to Streamlit secrets as `ANTHROPIC_API_KEY` to enable AI segmentation.")
-        else:
-            col_btn, col_note = st.columns([1,4])
-            with col_btn:
-                run_cust = st.button("✨ Generate Customer Segments", key="run_cust", use_container_width=True)
-            with col_note:
-                st.markdown('<p style="color:#64748b;font-size:12px;margin-top:8px">Claude analyses your 772 customers and groups them by behaviour, AOV, and purchase patterns</p>', unsafe_allow_html=True)
-
-            if run_cust:
-                if "seg_customers" in st.session_state:
-                    del st.session_state["seg_customers"]
-
-            if run_cust or "seg_customers" in st.session_state:
-                with st.spinner("🧠 Claude is analysing customer behaviour patterns..."):
-                    segs = call_claude(SEGMENT_TYPES["👥 Customer Segments"]["prompt"], "seg_customers")
-                if segs:
-                    st.markdown('<p style="font-size:13px;color:#64748b;margin:12px 0 6px">AI identified <b style="color:#0f172a">{} customer segments</b> from your data:</p>'.format(len(segs)), unsafe_allow_html=True)
-                    cols = st.columns(min(len(segs), 3))
-                    for i, seg in enumerate(segs):
-                        with cols[i % 3]:
-                            render_segment_card(seg, "customer")
-                            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
-                    # Summary bar
-                    total_pct = sum(s.get("pct",0) for s in segs if isinstance(s.get("pct"),int))
-                    st.markdown("---")
-                    st.markdown("**📊 Segment Distribution**")
-                    bar_cols = st.columns(len(segs))
-                    for i, seg in enumerate(segs):
-                        col = COLOR_MAP.get(seg.get("color","blue"), COLOR_MAP["blue"])
-                        pct = seg.get("pct", 0)
-                        with bar_cols[i]:
-                            st.markdown(f"""<div style="text-align:center">
-                                <div style="height:8px;background:{col['border']};border-radius:4px;margin-bottom:4px"></div>
-                                <div style="font-size:10px;font-weight:700;color:{col['text']}">{seg.get('emoji','')} {pct}%</div>
-                                <div style="font-size:9px;color:#94a3b8">{seg.get('name','')[:18]}</div>
-                            </div>""", unsafe_allow_html=True)
-            else:
-                # Placeholder
-                st.markdown("""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:12px;padding:48px;text-align:center">
-                    <div style="font-size:40px;margin-bottom:12px">🧠</div>
-                    <div style="font-weight:700;font-size:16px;color:#0f172a;margin-bottom:6px">AI Customer Segmentation</div>
-                    <div style="color:#64748b;font-size:13px">Click "Generate Customer Segments" to let Claude analyse your 772 customers<br>and group them into strategic segments like Discount Hunters, Premium Buyers, and more.</div>
-                </div>""", unsafe_allow_html=True)
-
-    with tab2:
-        api_key = get_api_key()
-        if not api_key:
-            st.warning("⚠️ Add your Anthropic API key to Streamlit secrets as `ANTHROPIC_API_KEY` to enable AI segmentation.")
-        else:
-            col_btn2, col_note2 = st.columns([1,4])
-            with col_btn2:
-                run_prod = st.button("✨ Generate Product Segments", key="run_prod", use_container_width=True)
-            with col_note2:
-                st.markdown('<p style="color:#64748b;font-size:12px;margin-top:8px">Claude analyses your 5 brands across revenue, AOV, growth trajectory, and risk</p>', unsafe_allow_html=True)
-
-            if run_prod:
-                if "seg_products" in st.session_state:
-                    del st.session_state["seg_products"]
-
-            if run_prod or "seg_products" in st.session_state:
-                with st.spinner("🧠 Claude is analysing product performance patterns..."):
-                    segs = call_claude(SEGMENT_TYPES["📦 Product Segments"]["prompt"], "seg_products")
-                if segs:
-                    st.markdown('<p style="font-size:13px;color:#64748b;margin:12px 0 6px">AI identified <b style="color:#0f172a">{} product segments</b> from your brand data:</p>'.format(len(segs)), unsafe_allow_html=True)
-                    cols = st.columns(min(len(segs), 3))
-                    for i, seg in enumerate(segs):
-                        with cols[i % 3]:
-                            render_segment_card(seg, "product")
-                            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            else:
-                st.markdown("""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:12px;padding:48px;text-align:center">
-                    <div style="font-size:40px;margin-bottom:12px">📦</div>
-                    <div style="font-weight:700;font-size:16px;color:#0f172a;margin-bottom:6px">AI Product Segmentation</div>
-                    <div style="color:#64748b;font-size:13px">Click "Generate Product Segments" to let Claude categorise your brands into groups<br>like Hero SKUs, Hidden Gems, At-Risk Items, and Growth Opportunities.</div>
-                </div>""", unsafe_allow_html=True)
-
-
-
 HARDCODED_QA = {
     "What's causing the Jan revenue dip?": (
         "January dropped 22.3% to S$74,936 — the steepest month-on-month fall in the period. "
