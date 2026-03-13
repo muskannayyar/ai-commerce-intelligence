@@ -603,7 +603,6 @@ st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;background:#f1f5f9!important;color:#1e293b!important}
 #MainMenu,footer,div[data-testid="stToolbar"],div[data-testid="stDecoration"]{display:none!important}
-header[data-testid="stHeader"]{background:transparent!important;height:0!important;min-height:0!important;overflow:visible!important}
 .block-container{padding:1rem 2rem 3rem!important;background:#f1f5f9!important}
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
 section[data-testid="stSidebar"] *{color:#374151!important}
@@ -621,72 +620,6 @@ section[data-testid="stSidebar"] *{color:#374151!important}
 hr{border-color:#e2e8f0!important}
 div[data-testid="stIFrame"]{border:none!important;background:transparent!important}
 </style>""", unsafe_allow_html=True)
-
-# ── Sidebar toggle fix (JS) ───────────────────────────────────────────────────
-st.markdown("""
-<style>
-#sidebar-open-btn {
-    position: fixed;
-    top: 50%;
-    left: 0;
-    transform: translateY(-50%);
-    z-index: 999999;
-    background: #2563eb;
-    color: white;
-    border: none;
-    border-radius: 0 8px 8px 0;
-    padding: 14px 8px;
-    cursor: pointer;
-    font-size: 18px;
-    box-shadow: 2px 2px 8px rgba(0,0,0,0.25);
-    writing-mode: vertical-rl;
-    letter-spacing: 2px;
-    font-weight: 700;
-    transition: opacity 0.2s;
-}
-#sidebar-open-btn:hover { background: #1d4ed8; }
-</style>
-<button id="sidebar-open-btn" onclick="openSidebar()" title="Open menu">☰</button>
-<script>
-function openSidebar() {
-    // Try every known Streamlit selector across versions
-    var selectors = [
-        '[data-testid="stSidebarCollapsedControl"]',
-        '[data-testid="collapsedControl"]',
-        'button[kind="header"]',
-        '.css-1dp5vir button',
-        '[data-testid="stSidebar"] ~ div button',
-        'section[data-testid="stSidebar"]',
-    ];
-    for (var s of selectors) {
-        var el = document.querySelector(s);
-        if (el) { el.click(); break; }
-    }
-    // Also try clicking any button near the left edge
-    var allBtns = document.querySelectorAll('button');
-    for (var b of allBtns) {
-        var rect = b.getBoundingClientRect();
-        if (rect.left < 60 && rect.width < 60) { b.click(); break; }
-    }
-}
-// Hide our button if sidebar is already open
-(function check() {
-    var sidebar = document.querySelector('[data-testid="stSidebar"]');
-    var btn = document.getElementById('sidebar-open-btn');
-    if (!btn) { setTimeout(check, 300); return; }
-    if (sidebar) {
-        var observer = new MutationObserver(function() {
-            var collapsed = sidebar.getAttribute('aria-expanded') === 'false'
-                         || sidebar.style.width === '0px'
-                         || sidebar.classList.contains('st-emotion-cache-hidden');
-            btn.style.display = collapsed ? 'block' : 'none';
-        });
-        observer.observe(sidebar, {attributes: true, attributeFilter: ['aria-expanded','style','class']});
-    }
-    setTimeout(check, 500);
-})();
-</script>
-""", unsafe_allow_html=True)
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
