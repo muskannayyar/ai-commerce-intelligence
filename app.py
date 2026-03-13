@@ -743,6 +743,8 @@ st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;background:#f1f5f9!important;color:#1e293b!important}
 #MainMenu,footer,header[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="stDecoration"]{display:none!important}
+button[data-testid="collapsedControl"],div[data-testid="collapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;background:#2563eb!important;border-radius:0 8px 8px 0!important;box-shadow:2px 0 8px rgba(37,99,235,.25)!important}
+button[data-testid="collapsedControl"] svg,div[data-testid="collapsedControl"] svg{fill:white!important;stroke:white!important}
 .block-container{padding:1rem 2rem 3rem!important;background:#f1f5f9!important}
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
 section[data-testid="stSidebar"] *{color:#374151!important}
