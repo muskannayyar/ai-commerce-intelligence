@@ -604,9 +604,13 @@ st.markdown("""<style>
 /* Font + background — ONLY target specific elements, never [class*="css"] */
 html, body { font-family: 'Inter', sans-serif !important; background: #f1f5f9 !important; }
 .stApp { background: #f1f5f9 !important; }
-/* Hide only footer and decorations — NEVER hide header (sidebar toggle lives there) */
+/* Hide toolbar buttons but KEEP the header element — sidebar toggle lives inside it */
 footer { visibility: hidden !important; }
 div[data-testid="stDecoration"] { display: none !important; }
+div[data-testid="stToolbar"] { display: none !important; }
+#MainMenu { display: none !important; }
+/* Make header bar invisible but still present (so toggle button works) */
+header[data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; }
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
 section[data-testid="stSidebar"] .stMarkdown,
@@ -642,7 +646,7 @@ with st.sidebar:
 
     view = st.selectbox("View", [
         "📊 Overview","📅 MoM Analysis","📆 Weekly",
-        "📆 Daily Analysis","📣 Campaigns","📍 Geography","🎯 Scenario Planning"
+        "📆 Daily Analysis","📣 Campaigns","📍 Geography","🎯 Scenario Planning","🧠 AI Segmentation"
     ], label_visibility="collapsed")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Filters</p>', unsafe_allow_html=True)
@@ -1283,6 +1287,247 @@ elif "Scenario" in view:
 # ══════════════════════════════════════════════════════════════════════════════
 # FLOATING AI CHATBOT
 # ══════════════════════════════════════════════════════════════════════════════
+# ── 🧠 AI Segmentation ────────────────────────────────────────────────────────
+elif "AI Segmentation" in view:
+    st.markdown('<div class="section-header">🧠 AI Customer & Product Segmentation</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Claude analyses your data and segments customers and products into strategic groups</div>', unsafe_allow_html=True)
+
+    # ── Segment data context passed to AI ─────────────────────────────────────
+    DATA_CONTEXT = """
+You are analysing a Shopee Singapore e-commerce store. Here is the full business data:
+
+CUSTOMERS (772 total):
+- Repeat purchase rate: 3.6% (only 28 customers bought more than once)
+- Average order value: S$442
+- Revenue per customer: S$458
+- Top districts: Woodlands (S$67,353), Tampines (S$62,847), Bukit Timah (S$58,921), Jurong (S$44,898 — weakest, 27% below top)
+- 48.75% of customers used vouchers (avg S$10 discount)
+- Payment mix: PayNow 29.5%, ShopeePay 26%, SPayLater 22.6%, Credit Card 21.8%
+- Device: 68% mobile, 32% desktop
+
+PRODUCTS / BRANDS:
+- LG Electronics: S$227,248 revenue, 158 orders, AOV S$1,438 — dominates 64% of GMV
+- Philips: S$67,817, 164 orders, AOV S$414
+- Nike: S$26,834, 147 orders, AOV S$183
+- Anker: S$24,707, 166 orders, AOV S$149
+- COSRX (skincare): S$7,371, 165 orders, AOV S$45
+
+CAMPAIGNS:
+- Double Day: S$89,029, 172 orders, AOV S$518 — best performer
+- Mega Campaign: S$75,121, 168 orders, AOV S$447
+- Brand Day: S$68,307, 161 orders, AOV S$424
+- Flash Sale: S$63,142, 136 orders, AOV S$464
+
+MONTHLY TREND:
+- Oct 2025: S$88,216 (218 orders)
+- Nov 2025: S$94,439 (201 orders, +7.1%)
+- Dec 2025: S$96,386 (204 orders, +2.1%) — peak
+- Jan 2026: S$74,936 (177 orders, -22.3%) — post-holiday dip
+- Feb 2026 forecast: S$82,000 (+9.4% recovery)
+"""
+
+    SEGMENT_TYPES = {
+        "👥 Customer Segments": {
+            "prompt": DATA_CONTEXT + """
+Segment these 772 Shopee customers into 5 distinct strategic groups.
+For each segment provide:
+- A catchy name (e.g. "Discount Hunters", "Premium Electronics Buyers")
+- Estimated % of customer base
+- Key behavioural traits (2-3 bullet points)
+- Average order value range
+- Best campaign to target them
+- One specific action to grow/retain this segment
+
+Format as JSON array with fields: name, emoji, pct, color (one of: blue/green/amber/red/purple/teal), traits (array of 3 strings), aov_range, best_campaign, action
+
+Return ONLY valid JSON, no markdown, no explanation.
+""",
+            "cache_key": "seg_customers"
+        },
+        "📦 Product Segments": {
+            "prompt": DATA_CONTEXT + """
+Segment these products/brands into 5 strategic groups based on performance, AOV, and growth trajectory.
+For each segment provide:
+- A strategic category name (e.g. "Hero SKUs", "Hidden Gems", "At-Risk Items")
+- Which brands/products fall in this group
+- Estimated % of total GMV
+- Key characteristics (2-3 bullet points)
+- Strategic recommendation (one clear action)
+- Risk level: Low / Medium / High
+
+Format as JSON array with fields: name, emoji, pct_gmv, brands (array), color (one of: blue/green/amber/red/purple/teal), traits (array of 3 strings), recommendation, risk
+
+Return ONLY valid JSON, no markdown, no explanation.
+"""
+        }
+    }
+
+    COLOR_MAP = {
+        "blue":   {"bg":"#eff6ff","border":"#3b82f6","text":"#1d4ed8","tag":"#dbeafe"},
+        "green":  {"bg":"#f0fdf4","border":"#22c55e","text":"#15803d","tag":"#dcfce7"},
+        "amber":  {"bg":"#fffbeb","border":"#f59e0b","text":"#b45309","tag":"#fef3c7"},
+        "red":    {"bg":"#fef2f2","border":"#ef4444","text":"#b91c1c","tag":"#fee2e2"},
+        "purple": {"bg":"#faf5ff","border":"#a855f7","text":"#7c3aed","tag":"#f3e8ff"},
+        "teal":   {"bg":"#f0fdfa","border":"#14b8a6","text":"#0f766e","tag":"#ccfbf1"},
+    }
+
+    def call_claude(prompt, cache_key):
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        api_key = get_api_key()
+        if not api_key:
+            return None
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                         "content-type": "application/json"},
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 2000,
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=30
+            )
+            raw = resp.json()["content"][0]["text"].strip()
+            raw = raw.replace("```json","").replace("```","").strip()
+            result = json.loads(raw)
+            st.session_state[cache_key] = result
+            return result
+        except Exception as e:
+            st.error(f"AI error: {e}")
+            return None
+
+    def render_segment_card(seg, mode="customer"):
+        col = COLOR_MAP.get(seg.get("color","blue"), COLOR_MAP["blue"])
+        traits = seg.get("traits", [])
+        trait_html = "".join(f'<li style="margin-bottom:4px;color:#475569;font-size:12px">{t}</li>' for t in traits)
+
+        if mode == "customer":
+            footer_left  = f'<span style="font-size:11px;color:#64748b">💰 AOV: <b style="color:#0f172a">{seg.get("aov_range","—")}</b></span>'
+            footer_right = f'<span style="font-size:11px;color:#64748b">🎯 <b style="color:#0f172a">{seg.get("best_campaign","—")}</b></span>'
+            action_label = "Action"
+            action_val   = seg.get("action","")
+        else:
+            brands_html = " ".join(
+                f'<span style="background:{col["tag"]};color:{col["text"]};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600">{b}</span>'
+                for b in seg.get("brands",[])
+            )
+            risk = seg.get("risk","Medium")
+            risk_col = {"Low":"#16a34a","Medium":"#d97706","High":"#dc2626"}.get(risk,"#64748b")
+            footer_left  = f'<div style="margin-bottom:6px">{brands_html}</div><span style="font-size:11px;color:#64748b">📊 GMV Share: <b style="color:#0f172a">{seg.get("pct_gmv","—")}%</b></span>'
+            footer_right = f'<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:{col["tag"]};color:{risk_col};font-weight:700">Risk: {risk}</span>'
+            action_label = "Recommendation"
+            action_val   = seg.get("recommendation","")
+
+        pct = seg.get("pct", seg.get("pct_gmv","?"))
+        st.markdown(f"""
+        <div style="background:{col['bg']};border:1.5px solid {col['border']};border-radius:12px;padding:16px 18px;height:100%;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:22px">{seg.get('emoji','📌')}</span>
+                    <div>
+                        <div style="font-weight:800;font-size:14px;color:#0f172a">{seg.get('name','')}</div>
+                        <div style="font-size:11px;color:#64748b">~{pct}% of {"customers" if mode=="customer" else "GMV"}</div>
+                    </div>
+                </div>
+                <div style="background:{col['text']};color:white;font-weight:800;font-size:14px;padding:4px 12px;border-radius:20px">
+                    {pct}%
+                </div>
+            </div>
+            <ul style="margin:0 0 10px 16px;padding:0">{trait_html}</ul>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+                {footer_left}
+                {footer_right}
+            </div>
+            <div style="background:rgba(0,0,0,.04);border-radius:8px;padding:8px 10px">
+                <div style="font-size:10px;font-weight:700;color:{col['text']};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">⚡ {action_label}</div>
+                <div style="font-size:12px;color:#334155">{action_val}</div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Tabs ──────────────────────────────────────────────────────────────────
+    tab1, tab2 = st.tabs(["👥 Customer Segments", "📦 Product Segments"])
+
+    with tab1:
+        api_key = get_api_key()
+        if not api_key:
+            st.warning("⚠️ Add your Anthropic API key to Streamlit secrets as `ANTHROPIC_API_KEY` to enable AI segmentation.")
+        else:
+            col_btn, col_note = st.columns([1,4])
+            with col_btn:
+                run_cust = st.button("✨ Generate Customer Segments", key="run_cust", use_container_width=True)
+            with col_note:
+                st.markdown('<p style="color:#64748b;font-size:12px;margin-top:8px">Claude analyses your 772 customers and groups them by behaviour, AOV, and purchase patterns</p>', unsafe_allow_html=True)
+
+            if run_cust:
+                if "seg_customers" in st.session_state:
+                    del st.session_state["seg_customers"]
+
+            if run_cust or "seg_customers" in st.session_state:
+                with st.spinner("🧠 Claude is analysing customer behaviour patterns..."):
+                    segs = call_claude(SEGMENT_TYPES["👥 Customer Segments"]["prompt"], "seg_customers")
+                if segs:
+                    st.markdown('<p style="font-size:13px;color:#64748b;margin:12px 0 6px">AI identified <b style="color:#0f172a">{} customer segments</b> from your data:</p>'.format(len(segs)), unsafe_allow_html=True)
+                    cols = st.columns(min(len(segs), 3))
+                    for i, seg in enumerate(segs):
+                        with cols[i % 3]:
+                            render_segment_card(seg, "customer")
+                            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+                    # Summary bar
+                    total_pct = sum(s.get("pct",0) for s in segs if isinstance(s.get("pct"),int))
+                    st.markdown("---")
+                    st.markdown("**📊 Segment Distribution**")
+                    bar_cols = st.columns(len(segs))
+                    for i, seg in enumerate(segs):
+                        col = COLOR_MAP.get(seg.get("color","blue"), COLOR_MAP["blue"])
+                        pct = seg.get("pct", 0)
+                        with bar_cols[i]:
+                            st.markdown(f"""<div style="text-align:center">
+                                <div style="height:8px;background:{col['border']};border-radius:4px;margin-bottom:4px"></div>
+                                <div style="font-size:10px;font-weight:700;color:{col['text']}">{seg.get('emoji','')} {pct}%</div>
+                                <div style="font-size:9px;color:#94a3b8">{seg.get('name','')[:18]}</div>
+                            </div>""", unsafe_allow_html=True)
+            else:
+                # Placeholder
+                st.markdown("""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:12px;padding:48px;text-align:center">
+                    <div style="font-size:40px;margin-bottom:12px">🧠</div>
+                    <div style="font-weight:700;font-size:16px;color:#0f172a;margin-bottom:6px">AI Customer Segmentation</div>
+                    <div style="color:#64748b;font-size:13px">Click "Generate Customer Segments" to let Claude analyse your 772 customers<br>and group them into strategic segments like Discount Hunters, Premium Buyers, and more.</div>
+                </div>""", unsafe_allow_html=True)
+
+    with tab2:
+        api_key = get_api_key()
+        if not api_key:
+            st.warning("⚠️ Add your Anthropic API key to Streamlit secrets as `ANTHROPIC_API_KEY` to enable AI segmentation.")
+        else:
+            col_btn2, col_note2 = st.columns([1,4])
+            with col_btn2:
+                run_prod = st.button("✨ Generate Product Segments", key="run_prod", use_container_width=True)
+            with col_note2:
+                st.markdown('<p style="color:#64748b;font-size:12px;margin-top:8px">Claude analyses your 5 brands across revenue, AOV, growth trajectory, and risk</p>', unsafe_allow_html=True)
+
+            if run_prod:
+                if "seg_products" in st.session_state:
+                    del st.session_state["seg_products"]
+
+            if run_prod or "seg_products" in st.session_state:
+                with st.spinner("🧠 Claude is analysing product performance patterns..."):
+                    segs = call_claude(SEGMENT_TYPES["📦 Product Segments"]["prompt"], "seg_products")
+                if segs:
+                    st.markdown('<p style="font-size:13px;color:#64748b;margin:12px 0 6px">AI identified <b style="color:#0f172a">{} product segments</b> from your brand data:</p>'.format(len(segs)), unsafe_allow_html=True)
+                    cols = st.columns(min(len(segs), 3))
+                    for i, seg in enumerate(segs):
+                        with cols[i % 3]:
+                            render_segment_card(seg, "product")
+                            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            else:
+                st.markdown("""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:12px;padding:48px;text-align:center">
+                    <div style="font-size:40px;margin-bottom:12px">📦</div>
+                    <div style="font-weight:700;font-size:16px;color:#0f172a;margin-bottom:6px">AI Product Segmentation</div>
+                    <div style="color:#64748b;font-size:13px">Click "Generate Product Segments" to let Claude categorise your brands into groups<br>like Hero SKUs, Hidden Gems, At-Risk Items, and Growth Opportunities.</div>
+                </div>""", unsafe_allow_html=True)
+
+
+
 HARDCODED_QA = {
     "What's causing the Jan revenue dip?": (
         "January dropped 22.3% to S$74,936 — the steepest month-on-month fall in the period. "
