@@ -599,135 +599,118 @@ def generate_pdf_report(monthly, brands, campaigns, summary,
     return buf.read()
 
 # ── Fixed AI Segmentation Data ────────────────────────────────────────────────
+# 3 customer types: discount-driven / mid-ticket / high-ticket
 CUSTOMER_SEGMENTS = [
     {
-        "name": "Discount Hunters",   "emoji": "🏷️", "pct": 34, "color": "#f97316",
-        "bg": "#fff7ed", "border": "#fb923c",
-        "traits": ["Voucher usage 90%+", "AOV S$180–S$320", "High mobile, Flash Sale driven"],
-        "insight": "Price-sensitive buyers who only convert with a deal. Voucher cap at S$500 min basket could reduce leakage.",
-        "action": "Replace blanket vouchers with tiered discounts — S$5 off S$200, S$15 off S$500.",
-        "tag": "HIGH VOLUME · LOW MARGIN",  "tag_col": "#b45309"
+        "name": "Discount-Driven",  "emoji": "🏷️", "pct": 46,
+        "aov": "S$180–S$320",       "voucher": "90%+",
+        "bg": "#fff7ed", "border": "#fb923c", "color": "#b45309",
+        "action": "Set S$500 min basket on vouchers to cut leakage without losing volume.",
     },
     {
-        "name": "Premium Tech Buyers", "emoji": "💎", "pct": 18, "color": "#2563eb",
-        "bg": "#eff6ff", "border": "#3b82f6",
-        "traits": ["AOV S$800–S$1,800", "LG & Philips focused", "PayNow / Credit Card payers"],
-        "insight": "Your highest-value segment — 18% of customers but ~52% of GMV. Low voucher usage, high intent.",
-        "action": "Priority: exclusive early access to new LG launches + free delivery threshold at S$400.",
-        "tag": "LOW VOLUME · HIGHEST GMV",  "tag_col": "#1d4ed8"
+        "name": "Mid-Ticket",       "emoji": "🛒", "pct": 36,
+        "aov": "S$320–S$620",       "voucher": "~50%",
+        "bg": "#f0fdfa", "border": "#14b8a6", "color": "#0e7490",
+        "action": "Bundle SPayLater 0% instalment on S$400–600 baskets to push AOV up.",
     },
     {
-        "name": "One-Time Browsers",   "emoji": "👀", "pct": 29, "color": "#64748b",
-        "bg": "#f8fafc", "border": "#94a3b8",
-        "traits": ["Single purchase only", "AOV S$45–S$180", "Anker / COSRX / Nike buyers"],
-        "insight": "29% of customers who never returned. Mostly Fashion, Beauty, and accessories. Activation gap.",
-        "action": "7-day post-purchase email with 'Complete Your Setup' bundles — cross-sell Anker to Nike buyers.",
-        "tag": "HIGH CHURN RISK",           "tag_col": "#b91c1c"
-    },
-    {
-        "name": "SPayLater Power Users","emoji": "💳", "pct": 12, "color": "#7c3aed",
-        "bg": "#faf5ff", "border": "#a855f7",
-        "traits": ["SPayLater 100% payment", "AOV S$420–S$620", "Mid-range Electronics buyers"],
-        "insight": "Budget-flexible buyers who spend more when they can spread payments. 12% of customers, ~22% of GMV.",
-        "action": "Promote SPayLater 0% instalment on LG / Philips bundles above S$600 to lift basket size.",
-        "tag": "GROWTH SEGMENT",            "tag_col": "#6d28d9"
-    },
-    {
-        "name": "Loyal Repeaters",     "emoji": "⭐", "pct": 7,  "color": "#15803d",
-        "bg": "#f0fdf4", "border": "#22c55e",
-        "traits": ["2+ purchases, avg 3.6 orders", "AOV S$380–S$500", "Wednesday & Double Day active"],
-        "insight": "Only 3.6% repeat rate but these buyers generate 3x lifetime value. Critical to grow this segment.",
-        "action": "Launch a Shopee Coins loyalty tier — 2% cashback on repeat orders above S$300.",
-        "tag": "MOST VALUABLE · GROW THIS",  "tag_col": "#15803d"
+        "name": "High-Ticket",      "emoji": "💎", "pct": 18,
+        "aov": "S$620–S$1,800",     "voucher": "<15%",
+        "bg": "#eff6ff", "border": "#3b82f6", "color": "#1d4ed8",
+        "action": "Early-access invites to new LG launches — they convert without discounts.",
     },
 ]
 
+# 3 product tiers: hero / stable / underperformer
 PRODUCT_SEGMENTS = [
     {
-        "name": "Revenue Pillar",      "emoji": "🏛️", "brands": ["LG"],      "pct_gmv": 64, "color": "#2563eb",
-        "bg": "#eff6ff", "border": "#3b82f6",
-        "traits": ["S$227K GMV, 158 orders", "AOV S$1,438 — ultra premium", "+12.3% MoM growing"],
-        "insight": "Single-brand revenue engine. Irreplaceable short-term but concentration at 64% is the #1 business risk.",
-        "action": "Protect LG listing quality & stock. Simultaneously onboard 1 new Electronics brand per quarter.",
-        "risk": "HIGH", "risk_col": "#b91c1c", "risk_bg": "#fee2e2"
+        "name": "Hero",        "emoji": "🏆", "brands": ["LG"],
+        "gmv": "S$227K", "pct_gmv": 64, "trend": "+12.3%",
+        "bg": "#eff6ff", "border": "#3b82f6", "color": "#1d4ed8",
+        "trend_col": "#15803d",
+        "action": "Protect stock levels. Reduce dependency by onboarding 1 new brand/quarter.",
     },
     {
-        "name": "Steady Performer",    "emoji": "📈", "brands": ["Philips"],  "pct_gmv": 19, "color": "#0e7490",
-        "bg": "#f0fdfa", "border": "#14b8a6",
-        "traits": ["S$67K GMV, 164 orders", "AOV S$414 — mid-premium", "+4.1% MoM stable growth"],
-        "insight": "Consistent performer across all months. High order volume = good search velocity. Healthy diversifier.",
-        "action": "Bundle Philips + Anker accessories (e.g. Philips blender + Anker charger) to lift Anker AOV.",
-        "risk": "LOW", "risk_col": "#15803d", "risk_bg": "#dcfce7"
+        "name": "Stable",      "emoji": "📊", "brands": ["Philips", "Nike"],
+        "gmv": "S$95K",  "pct_gmv": 27, "trend": "+1–4%",
+        "bg": "#f0fdfa", "border": "#14b8a6", "color": "#0e7490",
+        "trend_col": "#15803d",
+        "action": "Bundle Philips + Nike to cross-sell between Home and Fashion buyers.",
     },
     {
-        "name": "High Frequency · Low AOV","emoji": "⚡", "brands": ["Anker","Nike"], "pct_gmv": 14, "color": "#d97706",
-        "bg": "#fffbeb", "border": "#f59e0b",
-        "traits": ["Combined 313 orders (2nd most)", "AOV S$149–S$183 — low basket", "-2.8% to -6.2% MoM declining"],
-        "insight": "High transaction volume but low AOV drags revenue. Nike & Anker together = 39% of order count but only 14% of GMV.",
-        "action": "Create 'Nike x Anker Sport Bundle' — shoes + wireless earbuds. Target S$280+ basket to lift combined AOV 60%.",
-        "risk": "MEDIUM", "risk_col": "#b45309", "risk_bg": "#fef3c7"
-    },
-    {
-        "name": "Hidden Gem",          "emoji": "💡", "brands": ["COSRX"],   "pct_gmv": 2,  "color": "#7c3aed",
-        "bg": "#faf5ff", "border": "#a855f7",
-        "traits": ["165 orders — 3rd highest volume", "AOV only S$45 — lowest", "-15.4% MoM — fastest decline"],
-        "insight": "COSRX has strong order frequency (skincare repurchase behaviour) but the lowest AOV. Bundle potential is huge.",
-        "action": "Create COSRX skincare routine bundles (cleanser + serum + moisturiser) targeting S$120+ basket.",
-        "risk": "MEDIUM", "risk_col": "#b45309", "risk_bg": "#fef3c7"
+        "name": "Underperformer", "emoji": "⚠️", "brands": ["Anker", "COSRX"],
+        "gmv": "S$32K",  "pct_gmv": 9,  "trend": "-6 to -15%",
+        "bg": "#fff7ed", "border": "#fb923c", "color": "#b45309",
+        "trend_col": "#b91c1c",
+        "action": "Create category bundles — Anker accessories + COSRX skincare starter kits.",
     },
 ]
 
-def _seg_customer_cards(segments, cols=5):
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
-        <span style="font-size:16px">🧠</span>
-        <span style="font-weight:800;font-size:15px;color:#0f172a">AI Customer Segments</span>
-        <span style="background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #bfdbfe">AI ANALYSIS</span>
+def _seg_customer_cards(segments):
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+        <span style="font-size:14px">🧠</span>
+        <span style="font-weight:700;font-size:13px;color:#0f172a">Customer Segments</span>
+        <span style="background:#eff6ff;color:#1d4ed8;font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px;border:1px solid #bfdbfe">AI</span>
     </div>""", unsafe_allow_html=True)
-    c_cols = st.columns(len(segments))
-    for i, seg in enumerate(segments):
-        with c_cols[i]:
-            st.markdown(f"""<div style="background:{seg['bg']};border:1.5px solid {seg['border']};border-radius:10px;padding:13px 14px;height:100%">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-                    <span style="font-size:20px">{seg['emoji']}</span>
-                    <span style="background:{seg['border']};color:white;font-size:11px;font-weight:800;padding:2px 8px;border-radius:10px">{seg['pct']}%</span>
+    cols = st.columns(3)
+    for i, s in enumerate(segments):
+        with cols[i]:
+            st.markdown(f"""
+            <div style="background:{s['bg']};border:1.5px solid {s['border']};border-radius:10px;padding:14px 16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:22px">{s['emoji']}</span>
+                        <span style="font-weight:800;font-size:13px;color:#0f172a">{s['name']}</span>
+                    </div>
+                    <span style="background:{s['border']};color:white;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px">{s['pct']}%</span>
                 </div>
-                <div style="font-weight:800;font-size:12px;color:#0f172a;margin-bottom:6px">{seg['name']}</div>
-                <ul style="margin:0 0 8px 14px;padding:0">{''.join(f'<li style="font-size:10.5px;color:#475569;margin-bottom:2px">{t}</li>' for t in seg['traits'])}</ul>
-                <div style="background:rgba(0,0,0,.05);border-radius:6px;padding:7px 8px;margin-bottom:6px">
-                    <div style="font-size:9.5px;font-weight:700;color:{seg['color']};text-transform:uppercase;margin-bottom:2px">💡 Insight</div>
-                    <div style="font-size:10.5px;color:#334155;line-height:1.5">{seg['insight']}</div>
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                    <div style="flex:1;background:rgba(0,0,0,.04);border-radius:6px;padding:6px 8px;text-align:center">
+                        <div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:2px">Avg Ticket</div>
+                        <div style="font-size:12px;font-weight:800;color:{s['color']}">{s['aov']}</div>
+                    </div>
+                    <div style="flex:1;background:rgba(0,0,0,.04);border-radius:6px;padding:6px 8px;text-align:center">
+                        <div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:2px">Voucher Use</div>
+                        <div style="font-size:12px;font-weight:800;color:{s['color']}">{s['voucher']}</div>
+                    </div>
                 </div>
-                <div style="background:{seg['bg']};border-left:3px solid {seg['border']};padding:5px 8px;border-radius:0 4px 4px 0">
-                    <div style="font-size:9px;font-weight:700;color:{seg['tag_col']};margin-bottom:2px">{seg['tag']}</div>
-                    <div style="font-size:10px;color:#334155">⚡ {seg['action']}</div>
+                <div style="border-left:3px solid {s['border']};padding:5px 8px;background:rgba(0,0,0,.03);border-radius:0 6px 6px 0">
+                    <div style="font-size:10px;color:#334155">⚡ {s['action']}</div>
                 </div>
             </div>""", unsafe_allow_html=True)
 
 def _seg_product_cards(segments):
-    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
-        <span style="font-size:16px">🧠</span>
-        <span style="font-weight:800;font-size:15px;color:#0f172a">AI Product Segments</span>
-        <span style="background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #bfdbfe">AI ANALYSIS</span>
+    st.markdown("""<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+        <span style="font-size:14px">🧠</span>
+        <span style="font-weight:700;font-size:13px;color:#0f172a">Product Performance Tiers</span>
+        <span style="background:#eff6ff;color:#1d4ed8;font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px;border:1px solid #bfdbfe">AI</span>
     </div>""", unsafe_allow_html=True)
-    p_cols = st.columns(len(segments))
-    for i, seg in enumerate(segments):
-        with p_cols[i]:
-            brands_html = " ".join(f'<span style="background:{seg["bg"]};border:1px solid {seg["border"]};color:{seg["color"]};padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700">{b}</span>' for b in seg['brands'])
-            st.markdown(f"""<div style="background:{seg['bg']};border:1.5px solid {seg['border']};border-radius:10px;padding:13px 14px;height:100%">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                    <span style="font-size:20px">{seg['emoji']}</span>
-                    <span style="background:{seg['risk_bg']};color:{seg['risk_col']};font-size:9px;font-weight:800;padding:2px 7px;border-radius:8px">Risk: {seg['risk']}</span>
+    cols = st.columns(3)
+    for i, s in enumerate(segments):
+        with cols[i]:
+            brands_html = "".join(f'<span style="background:{s["bg"]};border:1px solid {s["border"]};color:{s["color"]};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px">{b}</span>' for b in s['brands'])
+            st.markdown(f"""
+            <div style="background:{s['bg']};border:1.5px solid {s['border']};border-radius:10px;padding:14px 16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:22px">{s['emoji']}</span>
+                        <span style="font-weight:800;font-size:13px;color:#0f172a">{s['name']}</span>
+                    </div>
+                    <span style="color:{s['trend_col']};font-size:11px;font-weight:800">{s['trend']}</span>
                 </div>
-                <div style="font-weight:800;font-size:12px;color:#0f172a;margin-bottom:4px">{seg['name']}</div>
-                <div style="margin-bottom:6px">{brands_html}</div>
-                <div style="font-size:10px;color:#64748b;margin-bottom:6px">GMV Share: <b style="color:#0f172a">{seg['pct_gmv']}%</b></div>
-                <ul style="margin:0 0 8px 14px;padding:0">{''.join(f'<li style="font-size:10.5px;color:#475569;margin-bottom:2px">{t}</li>' for t in seg['traits'])}</ul>
-                <div style="background:rgba(0,0,0,.05);border-radius:6px;padding:7px 8px;margin-bottom:5px">
-                    <div style="font-size:9.5px;font-weight:700;color:{seg['color']};text-transform:uppercase;margin-bottom:2px">💡 Insight</div>
-                    <div style="font-size:10.5px;color:#334155;line-height:1.5">{seg['insight']}</div>
+                <div style="margin-bottom:8px">{brands_html}</div>
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                    <div style="flex:1;background:rgba(0,0,0,.04);border-radius:6px;padding:6px 8px;text-align:center">
+                        <div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:2px">GMV</div>
+                        <div style="font-size:12px;font-weight:800;color:{s['color']}">{s['gmv']}</div>
+                    </div>
+                    <div style="flex:1;background:rgba(0,0,0,.04);border-radius:6px;padding:6px 8px;text-align:center">
+                        <div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:2px">Share</div>
+                        <div style="font-size:12px;font-weight:800;color:{s['color']}">{s['pct_gmv']}%</div>
+                    </div>
                 </div>
-                <div style="background:{seg['bg']};border-left:3px solid {seg['border']};padding:5px 8px;border-radius:0 4px 4px 0">
-                    <div style="font-size:10px;color:#334155">⚡ {seg['action']}</div>
+                <div style="border-left:3px solid {s['border']};padding:5px 8px;background:rgba(0,0,0,.03);border-radius:0 6px 6px 0">
+                    <div style="font-size:10px;color:#334155">⚡ {s['action']}</div>
                 </div>
             </div>""", unsafe_allow_html=True)
 
@@ -802,7 +785,70 @@ with st.sidebar:
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">Data Upload</p>', unsafe_allow_html=True)
     up = st.file_uploader("CSV/Excel",type=["csv","xlsx","xls"],label_visibility="collapsed")
-    if up: st.success(f"✓ {up.name}")
+    if up:
+        try:
+            sheets = pd.read_excel(up, sheet_name=None)
+            # ── Monthly ──────────────────────────────────────────────────────
+            if "Monthly" in sheets:
+                _m = sheets["Monthly"].copy()
+                _m.columns = [c.lower().replace(" ","_") for c in _m.columns]
+                for col in ["revenue","orders","aov","customers","voucher_rate","avg_delivery","avg_rating"]:
+                    if col in _m.columns: _m[col] = pd.to_numeric(_m[col], errors="coerce")
+                if "is_forecast" in _m.columns:
+                    _m["is_forecast"] = _m["is_forecast"].apply(lambda x: str(x).lower() in ["true","1","yes"])
+                else:
+                    _m["is_forecast"] = False
+                _m["rev_mom"]  = _m["revenue"].pct_change()*100
+                _m["ord_mom"]  = _m["orders"].pct_change()*100
+                _m["aov_mom"]  = _m["aov"].pct_change()*100
+                _m["cust_mom"] = _m["customers"].pct_change()*100 if "customers" in _m.columns else 0
+                monthly_data   = _m
+                actual_monthly = _m[_m["is_forecast"]==False]
+            # ── Summary ──────────────────────────────────────────────────────
+            if "Summary" in sheets:
+                _s = sheets["Summary"].copy()
+                _s.columns = [c.lower().replace(" ","_") for c in _s.columns]
+                if "metric" in _s.columns and "value" in _s.columns:
+                    for _, row in _s.iterrows():
+                        k = str(row["metric"]).strip()
+                        try: SUMMARY[k] = float(row["value"])
+                        except: pass
+            # ── Brands ───────────────────────────────────────────────────────
+            if "Brands" in sheets:
+                _b = sheets["Brands"].copy()
+                _b.columns = [c.lower().replace(" ","_") for c in _b.columns]
+                _b["revenue"] = pd.to_numeric(_b["revenue"], errors="coerce")
+                _b["orders"]  = pd.to_numeric(_b["orders"],  errors="coerce")
+                _COLS = [C["blue"],C["cyan"],C["violet"],C["purple"],C["green"],C["amber"]]
+                _b["color"] = [_COLS[i % len(_COLS)] for i in range(len(_b))]
+                brands_data = _b
+            # ── Campaigns ────────────────────────────────────────────────────
+            if "Campaigns" in sheets:
+                _c = sheets["Campaigns"].copy()
+                _c.columns = [c.lower().replace(" ","_") for c in _c.columns]
+                _c["revenue"] = pd.to_numeric(_c["revenue"], errors="coerce")
+                _c["orders"]  = pd.to_numeric(_c["orders"],  errors="coerce")
+                _COLS2 = [C["blue"],C["cyan"],C["violet"],C["purple"],C["green"]]
+                _c["color"] = [_COLS2[i % len(_COLS2)] for i in range(len(_c))]
+                campaigns_data = _c
+            # ── Cities ───────────────────────────────────────────────────────
+            if "Cities" in sheets:
+                _ci = sheets["Cities"].copy()
+                _ci.columns = [c.lower().replace(" ","_") for c in _ci.columns]
+                _ci["revenue"] = pd.to_numeric(_ci["revenue"], errors="coerce")
+                _ci["orders"]  = pd.to_numeric(_ci["orders"],  errors="coerce")
+                cities_data = _ci
+            # ── Weekly ───────────────────────────────────────────────────────
+            if "Weekly" in sheets:
+                _w = sheets["Weekly"].copy()
+                _w.columns = [c.lower().replace(" ","_") for c in _w.columns]
+                for col in ["revenue","orders","aov","voucher_rate"]:
+                    if col in _w.columns: _w[col] = pd.to_numeric(_w[col], errors="coerce")
+                _w["rev_wow"] = _w["revenue"].pct_change()*100
+                weekly_data = _w
+            st.success(f"✅ {up.name} loaded — {len(sheets)} sheets detected: {', '.join(sheets.keys())}")
+        except Exception as _ue:
+            st.error(f"Upload error: {_ue}")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">📥 Download Report</p>', unsafe_allow_html=True)
 
