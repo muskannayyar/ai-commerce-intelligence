@@ -15,7 +15,7 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT, TA_JUSTIFY
 
-st.set_page_config(page_title="Shopee Commerce Intelligence", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Shopee Commerce Intelligence", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
 def get_api_key():
     try:
@@ -176,149 +176,38 @@ def badge(p):
     col=C["green"] if p>0 else(C["red"] if p<0 else"#64748b")
     return f'<span style="color:{col};font-weight:700;font-size:12px">{arr}{abs(p):.1f}%</span>'
 
-# ── PDF Report Generator (fully inlined — no external file dependency) ────────
+# ── PDF Report Generator — single-page crisp canvas ──────────────────────────
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors as rl_colors
-from reportlab.lib.units import cm
+from reportlab.lib.units import cm, mm
 from reportlab.platypus import (Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether, BaseDocTemplate, Frame, PageTemplate,
     PageBreak, Flowable)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT, TA_JUSTIFY
+from reportlab.pdfgen import canvas as _pdfgen
 
-_PDF_NAVY  = rl_colors.HexColor("#0f2744")
-_PDF_BLUE  = rl_colors.HexColor("#1d4ed8")
-_PDF_LBLUE = rl_colors.HexColor("#dbeafe")
-_PDF_STEEL = rl_colors.HexColor("#334155")
-_PDF_DGRAY = rl_colors.HexColor("#64748b")
-_PDF_LGRAY = rl_colors.HexColor("#f8fafc")
-_PDF_MGRAY = rl_colors.HexColor("#e2e8f0")
-_PDF_GRN   = rl_colors.HexColor("#15803d")
-_PDF_LGRN  = rl_colors.HexColor("#dcfce7")
-_PDF_RED   = rl_colors.HexColor("#b91c1c")
-_PDF_LRED  = rl_colors.HexColor("#fee2e2")
-_PDF_AMB   = rl_colors.HexColor("#b45309")
-_PDF_LAMB  = rl_colors.HexColor("#fef3c7")
-_PDF_PURP  = rl_colors.HexColor("#6d28d9")
-_PDF_LPURP = rl_colors.HexColor("#ede9fe")
-_PDF_TEAL  = rl_colors.HexColor("#0e7490")
-_PDF_LTEAL = rl_colors.HexColor("#cffafe")
-_PDF_BLK   = rl_colors.HexColor("#0f172a")
-_PDF_WHT   = rl_colors.white
-_PDF_ACC   = rl_colors.HexColor("#f97316")
-
-_PDF_CITIES = pd.DataFrame([
-    {"name":"Woodlands",   "revenue":67353,"orders":126,"aov":534},
-    {"name":"Tampines",    "revenue":62847,"orders":119,"aov":528},
-    {"name":"Bukit Timah", "revenue":58921,"orders":108,"aov":546},
-    {"name":"Bedok",       "revenue":55340,"orders":114,"aov":486},
-    {"name":"Ang Mo Kio",  "revenue":51209,"orders":107,"aov":479},
-    {"name":"Punggol",     "revenue":48773,"orders":107,"aov":456},
-    {"name":"Jurong",      "revenue":44898,"orders":116,"aov":387},
-])
-_PDF_CAMP_SPEND = {"Double Day":18000,"Mega Campaign":22000,"Brand Day":14000,"Flash Sale":8000}
-_PDF_CAMP_DELTA = {"Double Day":18.4,"Mega Campaign":5.2,"Brand Day":-3.1,"Flash Sale":-8.6}
-_PDF_BRAND_DELTA= {"LG":12.3,"Philips":4.1,"Nike":-2.8,"Anker":-6.2,"COSRX":-15.4}
-
-class _PDFCover(Flowable):
-    def __init__(self, report_title, prepared_by, period_label, company,
-                 tot_rev, tot_ord, avg_aov, tot_cust):
-        Flowable.__init__(self)
-        self.PW, self.PH = A4
-        self.width  = self.PW
-        self.height = self.PH
-        self.report_title = report_title
-        self.prepared_by  = prepared_by
-        self.period_label = period_label
-        self.company      = company
-        self.tot_rev = tot_rev; self.tot_ord = tot_ord
-        self.avg_aov = avg_aov; self.tot_cust = tot_cust
-
-    def draw(self):
-        c = self.canv
-        PW, PH, MG = self.PW, self.PH, 1.8*cm
-        c.setFillColor(_PDF_NAVY)
-        c.rect(0, 0, PW, PH, fill=1, stroke=0)
-        c.setFillColor(rl_colors.HexColor("#1e3a8a"))
-        c.circle(PW - 2*cm, PH - 2.5*cm, 4*cm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.HexColor("#172554"))
-        c.circle(2*cm, 4.5*cm, 4.5*cm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.HexColor("#1e40af"))
-        c.circle(PW - 0.5*cm, 10*cm, 2.5*cm, fill=1, stroke=0)
-        split_y = PH * 0.38
-        c.setFillColor(_PDF_ACC)
-        c.rect(0, split_y, PW, 3.5, fill=1, stroke=0)
-        c.setFillColor(_PDF_WHT)
-        c.rect(0, 0, PW, split_y, fill=1, stroke=0)
-        # Brand mark
-        c.setFillColor(_PDF_ACC)
-        c.roundRect(MG, PH - 2.1*cm, 1.0*cm, 1.0*cm, 4, fill=1, stroke=0)
-        c.setFillColor(_PDF_WHT); c.setFont("Helvetica-Bold", 15)
-        c.drawCentredString(MG + 0.5*cm, PH - 1.5*cm, "S")
-        c.setFillColor(_PDF_WHT); c.setFont("Helvetica-Bold", 8.5)
-        c.drawString(MG + 1.3*cm, PH - 1.48*cm, self.company.upper())
-        c.setFillColor(rl_colors.HexColor("#93c5fd")); c.setFont("Helvetica", 7.5)
-        c.drawString(MG + 1.3*cm, PH - 1.78*cm, "COMMERCE INTELLIGENCE PLATFORM")
-        # Title
-        c.setFillColor(_PDF_WHT); c.setFont("Helvetica-Bold", 26)
-        words = self.report_title.split(); mid = len(words)//2
-        if len(words) > 3:
-            c.drawString(MG, PH * 0.62, " ".join(words[:mid]))
-            c.drawString(MG, PH * 0.62 - 0.9*cm, " ".join(words[mid:]))
-        else:
-            c.drawString(MG, PH * 0.62, self.report_title)
-        c.setFillColor(_PDF_ACC); c.setFont("Helvetica-Bold", 11)
-        c.drawString(MG, PH * 0.62 - 1.8*cm, self.period_label)
-        # KPI strip
-        strip_y = split_y + 0.3*cm
-        c.setFillColor(rl_colors.HexColor("#1e3a8a"))
-        c.roundRect(MG, strip_y, PW - 2*MG, 1.35*cm, 5, fill=1, stroke=0)
-        kpi_data = [
-            ("PERIOD GMV",     "S${:,.0f}".format(self.tot_rev)),
-            ("TOTAL ORDERS",   "{:,}".format(self.tot_ord)),
-            ("CUSTOMERS",      "{:,}".format(self.tot_cust)),
-            ("AVG ORDER VALUE","S${:.0f}".format(self.avg_aov)),
-        ]
-        col_w = (PW - 2*MG) / 4
-        for i, (lbl, val) in enumerate(kpi_data):
-            x = MG + i * col_w + col_w/2
-            c.setFillColor(rl_colors.HexColor("#93c5fd")); c.setFont("Helvetica", 6.5)
-            c.drawCentredString(x, strip_y + 0.95*cm, lbl)
-            c.setFillColor(_PDF_WHT); c.setFont("Helvetica-Bold", 11)
-            c.drawCentredString(x, strip_y + 0.28*cm, val)
-        for i in range(1, 4):
-            c.setStrokeColor(rl_colors.HexColor("#3b5998")); c.setLineWidth(0.5)
-            c.line(MG + i*col_w, strip_y + 0.15*cm, MG + i*col_w, strip_y + 1.18*cm)
-        # Metadata
-        meta_y = split_y - 0.9*cm
-        fields = [
-            ("PREPARED BY",      self.prepared_by),
-            ("REPORTING PERIOD", self.period_label),
-            ("DATE GENERATED",   date.today().strftime("%d %B %Y")),
-            ("DATA COVERAGE",    "{:,} orders · {:,} customers".format(self.tot_ord, self.tot_cust)),
-        ]
-        col_w2 = (PW - 2*MG) / 2
-        for i, (lbl, val) in enumerate(fields):
-            x = MG + (i % 2) * col_w2; y = meta_y - (i // 2) * 1.2*cm
-            c.setFillColor(_PDF_DGRAY); c.setFont("Helvetica", 6.5); c.drawString(x, y, lbl)
-            c.setFillColor(_PDF_BLK);  c.setFont("Helvetica-Bold", 9); c.drawString(x, y - 0.38*cm, val)
-        c.setStrokeColor(_PDF_MGRAY); c.setLineWidth(0.5)
-        c.line(MG, 1.2*cm, PW - MG, 1.2*cm)
-        c.setFillColor(_PDF_DGRAY); c.setFont("Helvetica", 7.5)
-        c.drawCentredString(PW/2, 0.65*cm,
-            "CONFIDENTIAL — For leadership review only. Do not distribute without authorisation.")
-
-class _PDFMiniBar(Flowable):
-    def __init__(self, val, max_val, width, height=7, fill=None):
-        Flowable.__init__(self)
-        self.width  = width; self.height = height
-        self.pct    = max(0, min(1.0, val/max_val)) if max_val else 0
-        self.fill   = fill or _PDF_BLUE
-    def draw(self):
-        self.canv.setFillColor(_PDF_MGRAY)
-        self.canv.rect(0, 0, self.width, self.height, fill=1, stroke=0)
-        self.canv.setFillColor(self.fill)
-        self.canv.rect(0, 0, self.width * self.pct, self.height, fill=1, stroke=0)
+_C = {
+    "navy":  rl_colors.HexColor("#0f2744"),
+    "blue":  rl_colors.HexColor("#1d4ed8"),
+    "lblue": rl_colors.HexColor("#dbeafe"),
+    "steel": rl_colors.HexColor("#334155"),
+    "dgray": rl_colors.HexColor("#64748b"),
+    "lgray": rl_colors.HexColor("#f8fafc"),
+    "mgray": rl_colors.HexColor("#e2e8f0"),
+    "grn":   rl_colors.HexColor("#15803d"),
+    "lgrn":  rl_colors.HexColor("#dcfce7"),
+    "red":   rl_colors.HexColor("#b91c1c"),
+    "lred":  rl_colors.HexColor("#fee2e2"),
+    "amb":   rl_colors.HexColor("#b45309"),
+    "lamb":  rl_colors.HexColor("#fef3c7"),
+    "purp":  rl_colors.HexColor("#6d28d9"),
+    "teal":  rl_colors.HexColor("#0e7490"),
+    "lteal": rl_colors.HexColor("#cffafe"),
+    "blk":   rl_colors.HexColor("#0f172a"),
+    "wht":   rl_colors.white,
+    "acc":   rl_colors.HexColor("#f97316"),
+}
 
 def generate_pdf_report(monthly, brands, campaigns, summary,
                         selected_months=None,
@@ -327,424 +216,396 @@ def generate_pdf_report(monthly, brands, campaigns, summary,
                         period_label="Oct 2025 – Jan 2026",
                         company="Shopee Singapore"):
 
-    _all_monthly = pd.DataFrame([
-        {"ym":"Oct 2025","revenue":88216, "orders":218,"aov":405,"voucher_rate":50.0,"avg_delivery":3.1,"rev_mom":None,"ord_mom":None,"aov_mom":None,"is_forecast":False},
-        {"ym":"Nov 2025","revenue":94439, "orders":201,"aov":470,"voucher_rate":55.2,"avg_delivery":3.1,"rev_mom":7.1, "ord_mom":-7.8,"aov_mom":16.0,"is_forecast":False},
-        {"ym":"Dec 2025","revenue":96386, "orders":204,"aov":472,"voucher_rate":45.1,"avg_delivery":3.1,"rev_mom":2.1, "ord_mom":1.5, "aov_mom":0.4, "is_forecast":False},
-        {"ym":"Jan 2026","revenue":74936, "orders":177,"aov":423,"voucher_rate":44.1,"avg_delivery":3.0,"rev_mom":-22.3,"ord_mom":-13.2,"aov_mom":-10.4,"is_forecast":False},
-        {"ym":"Feb 2026*","revenue":82000,"orders":188,"aov":436,"voucher_rate":46.0,"avg_delivery":3.0,"rev_mom":9.4, "ord_mom":6.2, "aov_mom":3.1, "is_forecast":True},
+    _all_m = pd.DataFrame([
+        {"ym":"Oct 2025","revenue":88216,"orders":218,"aov":405,"voucher_rate":50.0,"rev_mom":None,"ord_mom":None,"aov_mom":None,"is_forecast":False},
+        {"ym":"Nov 2025","revenue":94439,"orders":201,"aov":470,"voucher_rate":55.2,"rev_mom":7.1,"ord_mom":-7.8,"aov_mom":16.0,"is_forecast":False},
+        {"ym":"Dec 2025","revenue":96386,"orders":204,"aov":472,"voucher_rate":45.1,"rev_mom":2.1,"ord_mom":1.5,"aov_mom":0.4,"is_forecast":False},
+        {"ym":"Jan 2026","revenue":74936,"orders":177,"aov":423,"voucher_rate":44.1,"rev_mom":-22.3,"ord_mom":-13.2,"aov_mom":-10.4,"is_forecast":False},
+        {"ym":"Feb 2026*","revenue":82000,"orders":188,"aov":436,"voucher_rate":46.0,"rev_mom":9.4,"ord_mom":6.2,"aov_mom":3.1,"is_forecast":True},
     ])
-
     if selected_months:
-        _monthly = _all_monthly[_all_monthly["ym"].isin(selected_months)].reset_index(drop=True)
+        _m = _all_m[_all_m["ym"].isin(selected_months)].reset_index(drop=True)
     else:
-        _monthly = _all_monthly[_all_monthly["is_forecast"]==False].reset_index(drop=True)
+        _m = _all_m[_all_m["is_forecast"]==False].reset_index(drop=True)
+    _act = _m[_m["is_forecast"]==False].reset_index(drop=True)
+    tot_rev = int(_act["revenue"].sum())
+    tot_ord = int(_act["orders"].sum())
+    avg_aov = tot_rev/tot_ord if tot_ord else 0
+    last    = _act.iloc[-1]
 
-    _actual  = _monthly[_monthly["is_forecast"]==False].reset_index(drop=True)
-    tot_rev  = int(_actual["revenue"].sum())
-    tot_ord  = int(_actual["orders"].sum())
-    avg_aov  = tot_rev / tot_ord if tot_ord else 0
-    n_months = len(_actual)
-    tot_cust = summary["totalCust"]
+    _brands = pd.DataFrame([
+        {"name":"LG","revenue":227248,"orders":158,"delta":12.3},
+        {"name":"Philips","revenue":67817,"orders":164,"delta":4.1},
+        {"name":"Nike","revenue":26834,"orders":147,"delta":-2.8},
+        {"name":"Anker","revenue":24707,"orders":166,"delta":-6.2},
+        {"name":"COSRX","revenue":7371,"orders":165,"delta":-15.4},
+    ])
+    _camps = pd.DataFrame([
+        {"name":"Double Day","revenue":89029,"orders":172,"spend":18000,"delta":18.4},
+        {"name":"Mega Campaign","revenue":75121,"orders":168,"spend":22000,"delta":5.2},
+        {"name":"Brand Day","revenue":68307,"orders":161,"spend":14000,"delta":-3.1},
+        {"name":"Flash Sale","revenue":63142,"orders":136,"spend":8000,"delta":-8.6},
+    ])
 
     buf = io.BytesIO()
-    PW, PH = A4
-    MG = 1.8*cm
-    W  = PW - 2*MG
-    _id = [0]
-    def uid(): _id[0] += 1; return "s" + str(_id[0])
+    PW, PH = A4          # 595.28 x 841.89 pt
+    c = _pdfgen.Canvas(buf, pagesize=A4)
 
-    def _fv(v):   return "S${:,.0f}".format(v)
-    def _pct(v):
-        if v is None or (isinstance(v, float) and pd.isna(v)): return "—"
-        sym = "▲" if v > 0 else ("▼" if v < 0 else "→")
-        return "{} {}{}%".format(sym, "+" if v > 0 else "", "{:.1f}".format(v))
-    def _dc(v, inv=False):
-        if v is None or (isinstance(v, float) and pd.isna(v)): return _PDF_DGRAY
-        return (_PDF_GRN if (v >= 0) != inv else _PDF_RED)
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def fv(v):  return "S${:,.0f}".format(v)
+    def fk(v):  return "S${:.1f}K".format(v/1000)
+    def pct(v):
+        if v is None or (isinstance(v,float) and pd.isna(v)): return "—"
+        return ("▲ +" if v>0 else "▼ ") + "{:.1f}%".format(v)
+    def pctc(v,inv=False):
+        if v is None or (isinstance(v,float) and pd.isna(v)): return _C["dgray"]
+        return _C["grn"] if (v>=0)!=inv else _C["red"]
 
-    _SS = getSampleStyleSheet()
-    def _S(**kw): return ParagraphStyle(uid(), parent=_SS["Normal"], **kw)
-    def _hc(txt):
-        return Paragraph(txt, _S(fontSize=8, textColor=_PDF_WHT,
-               fontName="Helvetica-Bold", alignment=TA_CENTER, leading=11))
-    def _c(txt, bold=False, color=None, align=TA_CENTER, size=8.5):
-        return Paragraph(str(txt), _S(fontSize=size, textColor=color or _PDF_BLK,
-               fontName="Helvetica-Bold" if bold else "Helvetica",
-               alignment=align, leading=12))
-    def _sec(txt, bg=None):
-        bg = bg or _PDF_NAVY
-        t = Table([[Paragraph(txt, _S(fontSize=9, textColor=_PDF_WHT,
-                   fontName="Helvetica-Bold", leading=13))]], colWidths=[W])
-        t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),bg),
-                                ("ROWPADDING",(0,0),(-1,-1),[8,6,8,6])]))
-        return t
-    def _bar(val, max_val, fill=None):
-        return _PDFMiniBar(val, max_val, width=W*0.19, height=7, fill=fill or _PDF_BLUE)
+    def rect(x,y,w,h,fill=None,stroke=None,radius=0):
+        c.saveState()
+        if fill: c.setFillColor(fill)
+        if stroke: c.setStrokeColor(stroke)
+        if radius: c.roundRect(x,y,w,h,radius,fill=1 if fill else 0,stroke=1 if stroke else 0)
+        else: c.rect(x,y,w,h,fill=1 if fill else 0,stroke=1 if stroke else 0)
+        c.restoreState()
 
-    def _draw_inner(cv, doc):
-        cv.saveState()
-        cv.setFillColor(_PDF_NAVY)
-        cv.rect(0, PH - 0.85*cm, PW, 0.85*cm, fill=1, stroke=0)
-        cv.setFillColor(_PDF_ACC)
-        cv.rect(0, PH - 0.87*cm, PW, 2, fill=1, stroke=0)
-        cv.setFillColor(_PDF_WHT); cv.setFont("Helvetica-Bold", 8)
-        cv.drawString(MG, PH - 0.57*cm, company.upper() + "  ·  COMMERCE INTELLIGENCE")
-        cv.setFillColor(rl_colors.HexColor("#93c5fd")); cv.setFont("Helvetica", 7.5)
-        cv.drawRightString(PW - MG, PH - 0.57*cm, "CONFIDENTIAL  ·  " + report_title.upper())
-        cv.setFillColor(_PDF_LGRAY)
-        cv.rect(0, 0, PW, 0.8*cm, fill=1, stroke=0)
-        cv.setStrokeColor(_PDF_MGRAY); cv.setLineWidth(0.5)
-        cv.line(0, 0.8*cm, PW, 0.8*cm)
-        cv.setFillColor(_PDF_DGRAY); cv.setFont("Helvetica", 7)
-        cv.drawString(MG, 0.28*cm,
-            "Prepared by: {}   ·   Generated: {}".format(
-                prepared_by, date.today().strftime("%d %B %Y")))
-        cv.drawRightString(PW - MG, 0.28*cm, "Page {}".format(doc.page))
-        cv.restoreState()
+    def txt(s,x,y,font="Helvetica",size=8,color=None,align="left"):
+        c.saveState()
+        c.setFont(font,size)
+        if color: c.setFillColor(color)
+        if align=="right": c.drawRightString(x,y,str(s))
+        elif align=="center": c.drawCentredString(x,y,str(s))
+        else: c.drawString(x,y,str(s))
+        c.restoreState()
 
-    fr_cover = Frame(0, 0, PW, PH, id="cover",
-                     leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    fr_main  = Frame(MG, 0.8*cm + 0.25*cm, W,
-                     PH - 0.85*cm - 0.8*cm - 0.5*cm,
-                     id="main", leftPadding=0, rightPadding=0,
-                     topPadding=0.4*cm, bottomPadding=0)
-    doc = BaseDocTemplate(buf, pagesize=A4, pageTemplates=[
-        PageTemplate(id="cover", frames=[fr_cover], onPage=lambda c,d: None),
-        PageTemplate(id="main",  frames=[fr_main],  onPage=_draw_inner),
-    ])
-    story = []
+    def hline(x,y,w,color=None,width=0.5):
+        c.saveState()
+        c.setLineWidth(width)
+        if color: c.setStrokeColor(color)
+        c.line(x,y,x+w,y)
+        c.restoreState()
 
-    # ── Cover ─────────────────────────────────────────────────────────────────
-    story.append(_PDFCover(report_title, prepared_by, period_label, company,
-                           tot_rev, tot_ord, avg_aov, tot_cust))
-    story.append(PageBreak())
+    def mini_bar(x,y,w,h,val,maxv,fill):
+        rect(x,y,w,h,fill=_C["mgray"])
+        pct_w = max(0,min(1,val/maxv))*w if maxv else 0
+        rect(x,y,pct_w,h,fill=fill)
 
-    # ── Page 2: Exec Summary + KPIs + Monthly Trend + Brand ───────────────────
-    blurb = (
-        "This report covers <b>{} months</b> of Shopee Singapore commerce activity, "
-        "analysing <b>{:,} orders</b> across <b>{:,} customers</b>. "
-        "Total GMV reached <b>S${:,.0f}</b> at an average order value of <b>S${:.0f}</b>. "
-        "Performance peaked in December (S$96,386) before a <b>22.3% post-holiday contraction</b> in January. "
-        "February shows a recovery trajectory (+9.4% forecast). "
-        "Key strategic priorities: reduce LG brand concentration from 64%, improve "
-        "the 3.6% repeat purchase rate (industry avg 15–20%), and geo-target the Jurong revenue gap."
-        .format(n_months, tot_ord, tot_cust, tot_rev, avg_aov)
-    )
-    ex = Table([
-        [Paragraph("EXECUTIVE SUMMARY", _S(fontSize=8, textColor=_PDF_TEAL,
-                    fontName="Helvetica-Bold", leading=10, spaceAfter=4))],
-        [Paragraph(blurb, _S(fontSize=9, textColor=_PDF_STEEL, fontName="Helvetica", leading=14))],
-    ], colWidths=[W])
-    ex.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,-1), rl_colors.HexColor("#f0f9ff")),
-        ("BOX",(0,0),(-1,-1), 0.8, _PDF_TEAL),
-        ("LINEBEFORE",(0,0),(0,-1), 4, _PDF_TEAL),
-        ("ROWPADDING",(0,0),(-1,-1),[12,8,12,8]),
-        ("VALIGN",(0,0),(-1,-1),"TOP"),
-    ]))
-    story.append(ex); story.append(Spacer(1, 0.4*cm))
+    # ── LAYOUT CONSTANTS ─────────────────────────────────────────────────────
+    MG = 22          # margin pt
+    CW = PW - 2*MG   # content width  551
+    Y  = PH          # current Y (top of page)
 
-    # KPI Scorecard
-    story.append(KeepTogether([_sec("01  /  EXECUTIVE KPI SCORECARD"), Spacer(1,6)]))
-    _last = _actual.iloc[-1]
-    _kpis = [
-        ("Gross Merchandise Value",  _fv(tot_rev),                                _last["rev_mom"],  False, "Net revenue in period"),
-        ("Avg Order Value",          "S${:.0f}".format(avg_aov),                  _last["aov_mom"],  False, "Revenue / orders"),
-        ("Total Orders",             "{:,}".format(tot_ord),                      _last["ord_mom"],  False, "Orders placed"),
-        ("Avg Delivery",             "{:.1f} days".format(summary["avgDelivery"]),-2.9,              True,  "Target: <2 days"),
-        ("Repeat Rate",              "{}%".format(summary["repeatRate"]),          0.2,              False, "Industry avg 15–20%"),
-        ("Voucher Redemption",       "{}%".format(summary["voucherRate"]),         -3.1,             True,  "Lower = less leakage"),
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # HEADER BAND
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    HDR_H = 48
+    rect(0, PH-HDR_H, PW, HDR_H, fill=_C["navy"])
+    rect(0, PH-HDR_H-2, PW, 2, fill=_C["acc"])
+
+    txt(company.upper()+"  ·  "+report_title.upper(),
+        MG, PH-HDR_H+17, "Helvetica-Bold", 9, _C["wht"])
+    txt("CONFIDENTIAL  ·  "+period_label+"  ·  Prepared by: "+prepared_by,
+        PW-MG, PH-HDR_H+17, "Helvetica", 7.5, rl_colors.HexColor("#93c5fd"), "right")
+    txt("Generated: "+date.today().strftime("%d %B %Y"),
+        PW-MG, PH-HDR_H+6, "Helvetica", 7, _C["dgray"], "right")
+
+    Y = PH - HDR_H - 10   # working Y from here downward
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # KPI SCORECARD  (6 tiles in one row)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    KPI_H = 54
+    KW    = CW/6 - 3
+
+    kpis = [
+        ("GMV",             fv(tot_rev),          last["rev_mom"],  False, "Total revenue"),
+        ("Avg Order Value",  "S${:.0f}".format(avg_aov), last["aov_mom"], False, "Revenue ÷ orders"),
+        ("Total Orders",    "{:,}".format(tot_ord), last["ord_mom"],  False, "Orders placed"),
+        ("Avg Delivery",    "{:.1f}d".format(summary["avgDelivery"]), -2.9, True,  "Target <2 days"),
+        ("Repeat Rate",     "{}%".format(summary["repeatRate"]),  0.2,   False, "Industry avg 15–20%"),
+        ("Voucher Rate",    "{}%".format(summary["voucherRate"]), -3.1,  True,  "Lower = less leakage"),
     ]
-    kpi_t = Table([
-        [Paragraph(lbl, _S(fontSize=7, textColor=_PDF_DGRAY, fontName="Helvetica",
-                            alignment=TA_CENTER, leading=9)) for lbl,_,_,_,_ in _kpis],
-        [Paragraph(val, _S(fontSize=17, textColor=_PDF_NAVY, fontName="Helvetica-Bold",
-                            alignment=TA_CENTER, leading=21)) for _,val,_,_,_ in _kpis],
-        [Paragraph(_pct(dv) if dv is not None else "—",
-                   _S(fontSize=8.5, textColor=_dc(dv, inv), fontName="Helvetica-Bold",
-                      alignment=TA_CENTER)) for _,_,dv,inv,_ in _kpis],
-        [Paragraph(h, _S(fontSize=7, textColor=_PDF_DGRAY, fontName="Helvetica",
-                          alignment=TA_CENTER, leading=9)) for _,_,_,_,h in _kpis],
-    ], colWidths=[W/6]*6)
-    kpi_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_PDF_LGRAY),("BACKGROUND",(0,2),(-1,2),_PDF_LGRAY),
-        ("BACKGROUND",(0,3),(-1,3),rl_colors.HexColor("#f0f9ff")),
-        ("BOX",(0,0),(-1,-1),1.2,_PDF_BLUE),("INNERGRID",(0,0),(-1,-1),0.4,_PDF_MGRAY),
-        ("LINEABOVE",(0,1),(5,1),1.5,_PDF_BLUE),("LINEBELOW",(0,1),(5,1),1.5,_PDF_BLUE),
-        ("ROWPADDING",(0,0),(-1,-1),7),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ]))
-    story.append(kpi_t)
-    story.append(Paragraph(
-        "Deltas = most recent month MoM change. ▲ up, ▼ down. "
-        "For Delivery and Voucher Rate, lower is better (green when improved).",
-        _S(fontSize=7, textColor=_PDF_DGRAY, fontName="Helvetica", leading=10)))
-    story.append(Spacer(1, 0.4*cm))
+    for i,(lbl,val,dv,inv,hint) in enumerate(kpis):
+        kx = MG + i*(KW+3.6)
+        rect(kx, Y-KPI_H, KW, KPI_H, fill=_C["lgray"], radius=4)
+        txt(lbl,   kx+KW/2, Y-11,  "Helvetica",      6.5, _C["dgray"],  "center")
+        txt(val,   kx+KW/2, Y-27,  "Helvetica-Bold", 12,  _C["navy"],   "center")
+        dv_col = pctc(dv,inv)
+        txt(pct(dv) if dv is not None else "—",
+                   kx+KW/2, Y-38,  "Helvetica-Bold", 7.5, dv_col,       "center")
+        txt(hint,  kx+KW/2, Y-49,  "Helvetica",      6,   _C["dgray"],  "center")
 
-    # Monthly Trend
-    story.append(KeepTogether([_sec("02  /  MONTHLY PERFORMANCE TREND"), Spacer(1,6)]))
-    _mo_hdrs = ["Month","Revenue","MoM Rev","Orders","MoM Ord","AOV","MoM AOV","Voucher%","Delivery"]
-    _mo_rows = [[_hc(h) for h in _mo_hdrs]]
-    for _, r in _actual.iterrows():
-        _mo_rows.append([
-            _c(r["ym"], bold=True, color=_PDF_NAVY),
-            _c(_fv(r["revenue"]), bold=True),
-            _c(_pct(r["rev_mom"]), bold=True, color=_dc(r["rev_mom"])),
-            _c(str(r["orders"])),
-            _c(_pct(r["ord_mom"]), bold=True, color=_dc(r["ord_mom"])),
-            _c("S${}".format(r["aov"])),
-            _c(_pct(r["aov_mom"]), bold=True, color=_dc(r["aov_mom"])),
-            _c("{}%".format(r["voucher_rate"])),
-            _c("{}d".format(r["avg_delivery"])),
-        ])
-    if any(_monthly["is_forecast"]):
-        _fr = _monthly[_monthly["is_forecast"]].iloc[0]
-        _mo_rows.append([
-            _c(_fr["ym"]+" (F)", bold=True, color=_PDF_PURP),
-            _c(_fv(_fr["revenue"]), bold=True, color=_PDF_PURP),
-            _c(_pct(_fr["rev_mom"]), bold=True, color=_dc(_fr["rev_mom"])),
-            _c(str(_fr["orders"]), color=_PDF_PURP),
-            _c(_pct(_fr["ord_mom"]), bold=True, color=_dc(_fr["ord_mom"])),
-            _c("S${}".format(_fr["aov"]), color=_PDF_PURP),
-            _c(_pct(_fr["aov_mom"]), bold=True, color=_dc(_fr["aov_mom"])),
-            _c("{}%".format(_fr["voucher_rate"]), color=_PDF_PURP),
-            _c("{}d".format(_fr["avg_delivery"]), color=_PDF_PURP),
-        ])
-    _cw_mo = [W*0.13,W*0.12,W*0.09,W*0.08,W*0.09,W*0.09,W*0.09,W*0.10,W*0.09]
-    _mo_t = Table(_mo_rows, colWidths=_cw_mo)
-    _mo_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_PDF_NAVY),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[_PDF_LGRAY,_PDF_WHT]),
-        ("GRID",(0,0),(-1,-1),0.4,_PDF_MGRAY),
-        ("LINEBELOW",(0,0),(-1,0),1.5,_PDF_NAVY),
-        ("ROWPADDING",(0,0),(-1,-1),[6,4,6,4]),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ]))
-    story.append(_mo_t)
-    if any(_monthly["is_forecast"]):
-        story.append(Paragraph("(F) = forecast. Actual may vary.",
-            _S(fontSize=7, textColor=_PDF_PURP, fontName="Helvetica", leading=10)))
-    story.append(Spacer(1, 0.4*cm))
+    Y -= (KPI_H + 9)
 
-    # Brand Performance
-    story.append(KeepTogether([_sec("03  /  BRAND PERFORMANCE"), Spacer(1,6)]))
-    _bs = brands.sort_values("revenue", ascending=False).reset_index(drop=True)
-    _bs["aov_v"] = (_bs["revenue"]/_bs["orders"]).round(0).astype(int)
-    _bs["share"] = (_bs["revenue"]/_bs["revenue"].sum()*100).round(1)
-    _max_r = _bs["revenue"].max()
-    _br_hdrs = ["#","Brand","Revenue","Share","        Bar        ","MoM","AOV","Orders","Status"]
-    _br_rows = [[_hc(h) for h in _br_hdrs]]
-    _tier_st = []
-    for i, (_, r) in enumerate(_bs.iterrows()):
-        dv = _PDF_BRAND_DELTA.get(r["name"], 0); is_top = i < 3
-        status = "Core" if i==0 else ("Growth" if is_top else "Watch")
-        s_col  = _PDF_BLUE if i==0 else (_PDF_GRN if is_top else _PDF_RED)
-        _br_rows.append([
-            _c(str(i+1), bold=True, color=_PDF_NAVY),
-            _c("<b>{}</b>".format(r["name"]), bold=True, align=TA_LEFT),
-            _c(_fv(r["revenue"]), bold=True, color=_PDF_NAVY),
-            _c("{}%".format(r["share"])),
-            _bar(r["revenue"], _max_r, fill=_PDF_BLUE if is_top else _PDF_AMB),
-            _c(_pct(dv), bold=True, color=_dc(dv)),
-            _c("S${}".format(r["aov_v"])),
-            _c(str(r["orders"])),
-            _c(status, bold=True, color=s_col),
-        ])
-        _tier_st.append(("BACKGROUND",(8,i+1),(8,i+1),
-                          _PDF_LBLUE if i==0 else (_PDF_LGRN if is_top else _PDF_LRED)))
-    _cw_br = [W*0.04,W*0.11,W*0.12,W*0.07,W*0.19,W*0.10,W*0.09,W*0.08,W*0.09]
-    _br_t = Table(_br_rows, colWidths=_cw_br,
-                  rowHeights=[None]+[0.65*cm]*(len(_br_rows)-1))
-    _br_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_PDF_NAVY),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[_PDF_LGRAY,_PDF_WHT]),
-        ("GRID",(0,0),(-1,-1),0.4,_PDF_MGRAY),
-        ("LINEBELOW",(0,0),(-1,0),1.5,_PDF_NAVY),
-        ("ROWPADDING",(0,0),(-1,-1),[6,4,6,4]),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ]+_tier_st))
-    story.append(_br_t); story.append(Spacer(1,5))
-    _callout = Table([[
-        Paragraph("<b>LG Concentration Alert:</b>  LG drives 64% of GMV (S$227,248). "
-                  "Single-brand dependency is the highest strategic risk. "
-                  "Target: onboard 2–3 new brands to bring LG below 50% by Q3 2026.",
-                  _S(fontSize=8.5, textColor=rl_colors.HexColor("#1e3a5f"), fontName="Helvetica", leading=12)),
-        Paragraph("<b>COSRX &amp; Anker Watch:</b>  Both declining MoM (-15.4% and -6.2%). "
-                  "Review listing quality, keyword coverage, and competitive pricing urgently.",
-                  _S(fontSize=8.5, textColor=rl_colors.HexColor("#7f1d1d"), fontName="Helvetica", leading=12)),
-    ]], colWidths=[W*0.499, W*0.499])
-    _callout.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(0,0),_PDF_LBLUE),("BACKGROUND",(1,0),(1,0),_PDF_LRED),
-        ("BOX",(0,0),(0,0),0.8,_PDF_BLUE),("BOX",(1,0),(1,0),0.8,_PDF_RED),
-        ("LEFTPADDING",(0,0),(1,0),10),("RIGHTPADDING",(0,0),(1,0),10),
-        ("ROWPADDING",(0,0),(-1,-1),8),("VALIGN",(0,0),(-1,-1),"TOP"),
-    ]))
-    story.append(_callout)
-    story.append(PageBreak())
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TWO-COLUMN LAYOUT: Monthly Trend (left) | Brand Performance (right)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    COL1 = CW * 0.52
+    COL2 = CW * 0.46
+    GAP  = CW * 0.02
+    LX   = MG
+    RX   = MG + COL1 + GAP
 
-    # ── Page 3: Campaign ROI + Geography + Key Takeaways ──────────────────────
-    story.append(KeepTogether([_sec("04  /  CAMPAIGN ROI ANALYSIS", bg=_PDF_PURP), Spacer(1,6)]))
-    _cr_hdrs = ["Campaign","Revenue","MoM","Budget","Net Profit","ROI","ROAS","Orders","AOV"]
-    _cr_rows = [[_hc(h) for h in _cr_hdrs]]
-    for _, r in campaigns.iterrows():
-        sp = _PDF_CAMP_SPEND[r["name"]]; dv = _PDF_CAMP_DELTA[r["name"]]
-        roi = (r["revenue"]-sp)/sp*100; net = int(r["revenue"]-sp)
-        _cr_rows.append([
-            _c("<b>{}</b>".format(r["name"]), bold=True, align=TA_LEFT),
-            _c(_fv(r["revenue"]), bold=True, color=_PDF_NAVY),
-            _c(_pct(dv), bold=True, color=_dc(dv)),
-            _c(_fv(sp), color=_PDF_DGRAY),
-            _c(_fv(net), bold=True, color=_PDF_GRN if net>0 else _PDF_RED),
-            _c("{:.0f}%".format(roi), bold=True, color=_PDF_GRN if roi>200 else _PDF_AMB),
-            _c("{:.1f}x".format(r["revenue"]/sp)),
-            _c(str(r["orders"])),
-            _c("S${}".format(r["revenue"]//r["orders"])),
-        ])
-    _cw_cr = [W*0.17,W*0.12,W*0.08,W*0.11,W*0.11,W*0.09,W*0.08,W*0.07,W*0.08]
-    _cr_t = Table(_cr_rows, colWidths=_cw_cr)
-    _cr_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_PDF_PURP),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[_PDF_LPURP,_PDF_WHT]),
-        ("GRID",(0,0),(-1,-1),0.4,_PDF_MGRAY),
-        ("LINEBELOW",(0,0),(-1,0),1.5,_PDF_PURP),
-        ("ROWPADDING",(0,0),(-1,-1),[6,4,6,4]),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ]))
-    story.append(_cr_t)
-    story.append(Paragraph(
-        "Budget = modelled estimate (Shopee SG CPO benchmarks). "
-        "Double Day: ROAS 4.9x, highest AOV S$518. Flash Sale -8.6% MoM — recommend budget reallocation.",
-        _S(fontSize=7, textColor=_PDF_DGRAY, fontName="Helvetica", leading=10)))
-    story.append(Spacer(1, 0.4*cm))
+    # --- Section label helper ---
+    def sec_label(x,y,w,label,bg=None):
+        bg = bg or _C["navy"]
+        rect(x,y,w,13,fill=bg,radius=2)
+        txt(label, x+6, y+3.5, "Helvetica-Bold", 7, _C["wht"])
+
+    # ── LEFT: Monthly Trend table ─────────────────────────────────────────
+    sec_label(LX, Y, COL1, "MONTHLY PERFORMANCE TREND")
+    Y2 = Y - 15  # table starts here
+
+    MON_H = 13   # row height
+    mo_cols = [("Month",0.22),("Rev",0.19),("MoM",0.15),("Ord",0.13),("AOV",0.14),("Voucher",0.13),]
+    mo_cw   = [COL1*p for _,p in mo_cols]
+
+    # header row
+    rx = LX
+    rect(LX, Y2-MON_H, COL1, MON_H, fill=_C["navy"])
+    for j,(lbl,_) in enumerate(mo_cols):
+        txt(lbl, rx+mo_cw[j]/2, Y2-MON_H+4, "Helvetica-Bold", 6.5, _C["wht"], "center")
+        rx += mo_cw[j]
+    Y2 -= MON_H
+
+    for ri, (_, r) in enumerate(_act.iterrows()):
+        bg = _C["lgray"] if ri%2==0 else _C["wht"]
+        rect(LX, Y2-MON_H, COL1, MON_H, fill=bg)
+        vals = [
+            (r["ym"],      False, _C["navy"]),
+            (fk(r["revenue"]), True, _C["blk"]),
+            (pct(r["rev_mom"]), True, pctc(r["rev_mom"])),
+            (str(r["orders"]), False, _C["blk"]),
+            ("S${}".format(r["aov"]), False, _C["blk"]),
+            ("{}%".format(r["voucher_rate"]), False, _C["steel"]),
+        ]
+        rx2 = LX
+        for j,(v,bold,col) in enumerate(vals):
+            fn = "Helvetica-Bold" if bold else "Helvetica"
+            txt(v, rx2+mo_cw[j]/2, Y2-MON_H+4, fn, 6.5 if j>0 else 6.5, col, "center")
+            rx2 += mo_cw[j]
+        hline(LX, Y2-MON_H, COL1, _C["mgray"])
+        Y2 -= MON_H
+
+    # Forecast row if present
+    if any(_m["is_forecast"]):
+        fr = _m[_m["is_forecast"]].iloc[0]
+        rect(LX, Y2-MON_H, COL1, MON_H, fill=_C["lpurp"] if hasattr(_C,"lpurp") else rl_colors.HexColor("#ede9fe"))
+        fcast_vals = [
+            (fr["ym"]+" (F)", False, rl_colors.HexColor("#6d28d9")),
+            (fk(fr["revenue"]), True, rl_colors.HexColor("#6d28d9")),
+            (pct(fr["rev_mom"]), True, pctc(fr["rev_mom"])),
+            (str(fr["orders"]), False, _C["steel"]),
+            ("S${}".format(fr["aov"]), False, _C["steel"]),
+            ("{}%".format(fr["voucher_rate"]), False, _C["steel"]),
+        ]
+        rx2 = LX
+        for j,(v,bold,col) in enumerate(fcast_vals):
+            fn = "Helvetica-Bold" if bold else "Helvetica"
+            txt(v, rx2+mo_cw[j]/2, Y2-MON_H+4, fn, 6.5, col, "center")
+            rx2 += mo_cw[j]
+        Y2 -= MON_H
+
+    # outline
+    rect(LX, Y2, COL1, Y-15-Y2, stroke=_C["mgray"], radius=0)
+
+    # ── RIGHT: Brand Performance ──────────────────────────────────────────
+    RY = Y - 15
+    sec_label(RX, Y, COL2, "BRAND PERFORMANCE")
+
+    br_cols = [("Brand",0.26),("Revenue",0.24),("Bar",0.26),("MoM",0.14),("AOV",0.10)]
+    br_cw   = [COL2*p for _,p in br_cols]
+    max_rev = _brands["revenue"].max()
+
+    # header
+    rect(RX, RY-MON_H, COL2, MON_H, fill=_C["navy"])
+    rx3 = RX
+    for lbl,_ in br_cols:
+        txt(lbl, rx3+br_cw[br_cols.index((lbl,_))]/2, RY-MON_H+4,
+            "Helvetica-Bold", 6.5, _C["wht"], "center")
+        rx3 += br_cw[br_cols.index((lbl,_))]
+    # fix iteration
+    rx3 = RX
+    for j,(lbl,_) in enumerate(br_cols):
+        txt(lbl, rx3+br_cw[j]/2, RY-MON_H+4, "Helvetica-Bold", 6.5, _C["wht"], "center")
+        rx3 += br_cw[j]
+    RY -= MON_H
+
+    for ri, (_, r) in enumerate(_brands.sort_values("revenue",ascending=False).iterrows()):
+        bg = _C["lgray"] if ri%2==0 else _C["wht"]
+        rect(RX, RY-MON_H, COL2, MON_H, fill=bg)
+        is_top = ri < 3
+        dv = r["delta"]
+        bar_fill = _C["blue"] if is_top else _C["amb"]
+
+        # Brand name
+        txt(r["name"], RX+br_cw[0]/2, RY-MON_H+4, "Helvetica-Bold", 7, _C["navy"], "center")
+        # Revenue
+        txt(fk(r["revenue"]), RX+br_cw[0]+br_cw[1]/2, RY-MON_H+4, "Helvetica-Bold", 6.5, _C["blk"], "center")
+        # Bar
+        bx = RX+br_cw[0]+br_cw[1]+4
+        mini_bar(bx, RY-MON_H+4, br_cw[2]-8, 5, r["revenue"], max_rev, bar_fill)
+        # MoM
+        txt(pct(dv), RX+br_cw[0]+br_cw[1]+br_cw[2]+br_cw[3]/2,
+            RY-MON_H+4, "Helvetica-Bold", 6, pctc(dv), "center")
+        # AOV
+        aov_v = int(r["revenue"]/r["orders"])
+        txt("S${}".format(aov_v), RX+br_cw[0]+br_cw[1]+br_cw[2]+br_cw[3]+br_cw[4]/2,
+            RY-MON_H+4, "Helvetica", 6, _C["steel"], "center")
+        hline(RX, RY-MON_H, COL2, _C["mgray"])
+        RY -= MON_H
+
+    rect(RX, RY, COL2, Y-15-RY, stroke=_C["mgray"])
+
+    # sync Y to lower of Y2, RY
+    Y = min(Y2, RY) - 8
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TWO-COLUMN: Campaign ROI (left) | Geography (right)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    sec_label(LX, Y, COL1, "CAMPAIGN ROI ANALYSIS", bg=rl_colors.HexColor("#6d28d9"))
+    sec_label(RX, Y, COL2, "GEOGRAPHIC REVENUE", bg=_C["teal"])
+    CY = Y - 15
+
+    # Campaign table
+    cr_cols=[("Campaign",0.29),("Revenue",0.19),("ROI",0.13),("ROAS",0.12),("MoM",0.13),("AOV",0.14)]
+    cr_cw  =[COL1*p for _,p in cr_cols]
+    rect(LX, CY-MON_H, COL1, MON_H, fill=rl_colors.HexColor("#6d28d9"))
+    rx4 = LX
+    for j,(lbl,_) in enumerate(cr_cols):
+        txt(lbl, rx4+cr_cw[j]/2, CY-MON_H+4, "Helvetica-Bold", 6.5, _C["wht"], "center")
+        rx4 += cr_cw[j]
+    CY -= MON_H
+    for ri,(_, r) in enumerate(_camps.sort_values("revenue",ascending=False).iterrows()):
+        bg = rl_colors.HexColor("#f5f3ff") if ri%2==0 else _C["wht"]
+        rect(LX, CY-MON_H, COL1, MON_H, fill=bg)
+        roi  = (r["revenue"]-r["spend"])/r["spend"]*100
+        roas = r["revenue"]/r["spend"]
+        dv   = r["delta"]
+        cvals=[
+            (r["name"],                    "Helvetica-Bold",7,_C["blk"]),
+            (fk(r["revenue"]),             "Helvetica-Bold",6.5,_C["navy"]),
+            ("{:.0f}%".format(roi),        "Helvetica-Bold",6.5,_C["grn"] if roi>200 else _C["amb"]),
+            ("{:.1f}x".format(roas),       "Helvetica",    6.5,_C["steel"]),
+            (pct(dv),                      "Helvetica-Bold",6,pctc(dv)),
+            ("S${}".format(int(r["revenue"]/r["orders"])),"Helvetica",6.5,_C["steel"]),
+        ]
+        rx5 = LX
+        for j,(v,fn,sz,col) in enumerate(cvals):
+            txt(v, rx5+cr_cw[j]/2, CY-MON_H+4, fn, sz, col, "center")
+            rx5 += cr_cw[j]
+        hline(LX, CY-MON_H, COL1, _C["mgray"])
+        CY -= MON_H
+    rect(LX, CY, COL1, Y-15-CY, stroke=_C["mgray"])
 
     # Geography
-    story.append(KeepTogether([_sec("05  /  GEOGRAPHIC REVENUE BREAKDOWN", bg=_PDF_TEAL), Spacer(1,6)]))
-    _geo_hdrs = ["District","Revenue","Share","     Revenue Bar     ","Orders","AOV","vs #1"]
-    _geo_rows = [[_hc(h) for h in _geo_hdrs]]
-    _total_geo = _PDF_CITIES["revenue"].sum(); _max_geo = _PDF_CITIES["revenue"].max()
-    _top_rev   = _PDF_CITIES.iloc[0]["revenue"]
-    for i, (_, r) in enumerate(_PDF_CITIES.iterrows()):
-        vs = (r["revenue"]-_top_rev)/_top_rev*100
-        is_top = i==0; is_low = r["revenue"] < _top_rev*0.75
-        _geo_rows.append([
-            _c("<b>{}</b>".format(r["name"]), bold=True,
-               color=_PDF_TEAL if is_top else _PDF_BLK, align=TA_LEFT),
-            _c(_fv(r["revenue"]), bold=True, color=_PDF_NAVY),
-            _c("{:.1f}%".format(r["revenue"]/_total_geo*100)),
-            _bar(r["revenue"], _max_geo, fill=_PDF_TEAL if is_top else (_PDF_AMB if is_low else _PDF_BLUE)),
-            _c(str(r["orders"])),
-            _c("S${}".format(r["aov"])),
-            _c("—" if is_top else "{:.1f}%".format(vs), bold=True,
-               color=_PDF_TEAL if is_top else (_PDF_RED if is_low else _PDF_DGRAY)),
-        ])
-    _cw_geo = [W*0.14,W*0.13,W*0.08,W*0.19,W*0.09,W*0.09,W*0.09]
-    _geo_t = Table(_geo_rows, colWidths=_cw_geo,
-                   rowHeights=[None]+[0.65*cm]*(len(_geo_rows)-1))
-    _geo_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_PDF_TEAL),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[_PDF_LGRAY,_PDF_WHT]),
-        ("GRID",(0,0),(-1,-1),0.4,_PDF_MGRAY),
-        ("LINEBELOW",(0,0),(-1,0),1.5,_PDF_TEAL),
-        ("ROWPADDING",(0,0),(-1,-1),[6,4,6,4]),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ]))
-    story.append(_geo_t)
-    story.append(Paragraph(
-        "Jurong AOV S$387 is 27% below Woodlands S$534 despite near-identical order volumes — "
-        "product mix issue, not a demand deficit.",
-        _S(fontSize=7.5, textColor=_PDF_DGRAY, fontName="Helvetica", leading=10)))
-    story.append(Spacer(1, 0.4*cm))
-
-    # Key Takeaways
-    story.append(_sec("06  /  KEY TAKEAWAYS  &  STRATEGIC RECOMMENDATIONS", bg=_PDF_BLK))
-    story.append(Spacer(1,7))
-    _takeaways = [
-        ("1","CRITICAL RISK",       _PDF_RED,
-         "LG Concentration at 64% of GMV — Diversify Before Q3 2026",
-         "LG contributes S$227,248 (64% of GMV) from just 158 high-value orders (avg S$1,438/order). "
-         "This single-brand exposure is the most material risk in the portfolio. "
-         "<b>Action:</b> Onboard Samsung, Sony, or Dyson, targeting LG below 50% GMV by Q3 2026.",
-         _PDF_LRED),
-        ("2","GROWTH OPPORTUNITY",  _PDF_AMB,
-         "Repeat Rate at 3.6% vs 15–20% Industry Average — Launch Loyalty Programme in Q2",
-         "Your 772 customers generate only 3.6% repeat orders, leaving S$40K–S$60K untapped per period. "
-         "A basic tiered loyalty scheme (5% store credit on orders above S$300) can unlock "
-         "compounding returns from high-value Electronics buyers. "
-         "<b>Action:</b> Target 8% repeat rate by Q2 2026 end.",
-         _PDF_LAMB),
-        ("3","QUICK WIN",           _PDF_GRN,
-         "Double Day ROI of 395% — Scale Budget 25–30% for Next Campaign Cycle",
-         "Double Day outperforms every other campaign: S$89,029 revenue, S$518 AOV (highest), "
-         "+18.4% MoM growth, and 4.9x ROAS. Flash Sale is declining (-8.6% MoM). "
-         "<b>Action:</b> Increase Double Day allocation 25–30% and test a Bundle + Free Shipping variant.",
-         _PDF_LGRN),
-        ("4","SEASONAL RISK",       _PDF_AMB,
-         "January -22.3% MoM Dip Is Predictable — Add Mid-January Flash Sale Permanently",
-         "January revenue hit S$74,936 — the steepest drop — with no SG events bridging demand. "
-         "Wednesday is your peak weekday at S$62,817. This will repeat in January 2027 without action. "
-         "<b>Action:</b> Block a 'New Year New Tech' mid-January Wednesday sale into the FY2026 calendar.",
-         _PDF_LAMB),
-        ("5","GEO OPPORTUNITY",     _PDF_TEAL,
-         "Jurong AOV Gap (-27% vs Top) — Geo-Targeted Campaign Can Add S$10K+/Year",
-         "Jurong's 116 orders nearly match Woodlands' 126, but AOV of S$387 vs S$534 "
-         "creates a S$22K annual revenue gap — a product mix issue, not demand. "
-         "<b>Action:</b> Run a 30-day Jurong-only Electronics bundle test at S$450 min basket.",
-         _PDF_LTEAL),
-        ("6","MARGIN IMPROVEMENT",  _PDF_GRN,
-         "Voucher Leakage at 48.75% — Structural Controls Recover S$5K–S$8K Net Annually",
-         "390 of 800 orders used vouchers at ~S$10 average = S$3,900/period or ~S$11,700 annualised. "
-         "Many redeemers would have converted anyway. Restricting to first-time buyers and S$500+ baskets "
-         "projected to reduce redemption to 38–40%. "
-         "<b>Action:</b> Implement threshold controls by April 2026 — minimal conversion impact.",
-         _PDF_LGRN),
+    _cities=[
+        ("Woodlands",67353,126,534),("Tampines",62847,119,528),
+        ("Bukit Timah",58921,108,546),("Bedok",55340,114,486),
+        ("Ang Mo Kio",51209,107,479),("Punggol",48773,107,456),
+        ("Jurong",44898,116,387),
     ]
-    for num, tag, border, title, body_txt, bg in _takeaways:
-        _num_t = Table([[Paragraph(num, _S(fontSize=14, fontName="Helvetica-Bold",
-                                           textColor=border, alignment=TA_CENTER, leading=18))]],
-                       colWidths=[0.9*cm])
-        _num_t.setStyle(TableStyle([("ROWPADDING",(0,0),(-1,-1),6)]))
-        _body_t = Table([[
-            Paragraph("[{}]  {}".format(tag, title),
-                       _S(fontSize=9.5, fontName="Helvetica-Bold", textColor=_PDF_BLK,
-                          leading=14, spaceAfter=4)),
-        ],[
-            Paragraph(body_txt, _S(fontSize=8.5, textColor=_PDF_STEEL,
-                                    fontName="Helvetica", leading=13)),
-        ]], colWidths=[W - 1.3*cm])
-        _row = Table([[_num_t, _body_t]], colWidths=[1.1*cm, W-1.1*cm])
-        _row.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(0,-1), bg),
-            ("BACKGROUND",(1,0),(1,-1), _PDF_WHT),
-            ("BOX",        (0,0),(-1,-1), 0.8, border),
-            ("LINEBEFORE",  (0,0),(0,-1), 4,   border),
-            ("ROWPADDING", (0,0),(-1,-1), [7,6,7,6]),
-            ("VALIGN",     (0,0),(-1,-1), "TOP"),
-        ]))
-        story.append(_row); story.append(Spacer(1,5))
+    GY = Y - 15
+    geo_cols=[("District",0.30),("Revenue",0.22),("Bar",0.24),("AOV",0.14),("vs#1",0.10)]
+    geo_cw =[COL2*p for _,p in geo_cols]
+    rect(RX, GY-MON_H, COL2, MON_H, fill=_C["teal"])
+    rx6 = RX
+    for j,(lbl,_) in enumerate(geo_cols):
+        txt(lbl, rx6+geo_cw[j]/2, GY-MON_H+4, "Helvetica-Bold", 6.5, _C["wht"], "center")
+        rx6 += geo_cw[j]
+    GY -= MON_H
+    top_rev_g = _cities[0][1]; max_rev_g = top_rev_g
+    for ri,(name,rev,ord_,aov) in enumerate(_cities):
+        bg = _C["lgray"] if ri%2==0 else _C["wht"]
+        rect(RX, GY-MON_H, COL2, MON_H, fill=bg)
+        vs = (rev-top_rev_g)/top_rev_g*100
+        is_low = rev < top_rev_g*0.75
+        bar_f = _C["teal"] if ri==0 else (_C["amb"] if is_low else _C["blue"])
+        # district
+        txt(name, RX+geo_cw[0]/2, GY-MON_H+4, "Helvetica-Bold" if ri==0 else "Helvetica",
+            6.5, _C["teal"] if ri==0 else _C["blk"], "center")
+        # revenue
+        txt(fk(rev), RX+geo_cw[0]+geo_cw[1]/2, GY-MON_H+4, "Helvetica-Bold", 6.5, _C["navy"], "center")
+        # bar
+        gbx = RX+geo_cw[0]+geo_cw[1]+4
+        mini_bar(gbx, GY-MON_H+4, geo_cw[2]-8, 5, rev, max_rev_g, bar_f)
+        # aov
+        txt("S${}".format(aov), RX+geo_cw[0]+geo_cw[1]+geo_cw[2]+geo_cw[3]/2,
+            GY-MON_H+4, "Helvetica", 6.5, _C["steel"], "center")
+        # vs#1
+        vs_str = "—" if ri==0 else "{:.0f}%".format(vs)
+        txt(vs_str, RX+geo_cw[0]+geo_cw[1]+geo_cw[2]+geo_cw[3]+geo_cw[4]/2,
+            GY-MON_H+4, "Helvetica-Bold" if is_low else "Helvetica",
+            6, _C["teal"] if ri==0 else (_C["red"] if is_low else _C["dgray"]), "center")
+        hline(RX, GY-MON_H, COL2, _C["mgray"])
+        GY -= MON_H
+    rect(RX, GY, COL2, Y-15-GY, stroke=_C["mgray"])
 
-    # Disclaimer
-    story.append(Spacer(1, 0.15*cm))
-    story.append(HRFlowable(width=W, thickness=0.5, color=_PDF_MGRAY, spaceAfter=5))
-    story.append(Paragraph(
-        "This report is generated by the Shopee Commerce Intelligence platform for internal leadership "
-        "use only. Campaign ROI figures use modelled budget estimates based on Shopee SG CPO benchmarks. "
-        "All MoM deltas reflect sequential monthly change. All figures in Singapore Dollars (SGD). "
-        "For corrections or questions please contact your analytics team.",
-        _S(fontSize=7.5, textColor=_PDF_DGRAY, fontName="Helvetica",
-           leading=11, alignment=TA_JUSTIFY)))
+    Y = min(CY, GY) - 8
 
-    doc.build(story)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # KEY TAKEAWAYS — 6 items in 2 columns of 3
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    sec_label(LX, Y, CW, "KEY TAKEAWAYS  &  STRATEGIC RECOMMENDATIONS", bg=_C["blk"])
+    Y -= 15
+    TW   = (CW - 5) / 2   # tile width
+    TH   = 36              # tile height
+    TGAP = 4
+
+    takeaways = [
+        (_C["red"],  _C["lred"],  "1 CRITICAL RISK",
+         "LG = 64% of GMV",
+         "Onboard Samsung/Sony. Target LG <50% by Q3 2026."),
+        (_C["amb"],  _C["lamb"],  "2 GROWTH",
+         "Repeat rate 3.6% vs 15–20% avg",
+         "Launch loyalty programme by Q2. Target 8% repeat rate."),
+        (_C["grn"],  _C["lgrn"],  "3 QUICK WIN",
+         "Double Day ROI 395%, ROAS 4.9x",
+         "Scale budget +25–30%. Replicate bundle mechanic."),
+        (_C["amb"],  _C["lamb"],  "4 SEASONAL RISK",
+         "Jan -22.3% MoM every year",
+         "Add mid-Jan Wednesday flash sale to FY26/27 calendar."),
+        (_C["teal"], rl_colors.HexColor("#cffafe"), "5 GEO",
+         "Jurong AOV S$387 vs S$534 top (-27%)",
+         "Geo-targeted Electronics bundle at S$450+ min basket."),
+        (_C["grn"],  _C["lgrn"],  "6 MARGIN",
+         "Voucher leakage S$3.9K/period",
+         "Set S$500 min basket + first-time buyer restriction."),
+    ]
+    for i,(border,bg,tag,title,action) in enumerate(takeaways):
+        col = i // 3
+        row = i %  3
+        tx  = LX + col*(TW+5)
+        ty  = Y  - row*(TH+TGAP)
+        rect(tx, ty-TH, TW, TH, fill=bg, radius=3)
+        # left accent bar
+        rect(tx, ty-TH, 3, TH, fill=border, radius=0)
+        txt(tag,    tx+8,  ty-10, "Helvetica-Bold", 6.5, border)
+        txt(title,  tx+8,  ty-20, "Helvetica-Bold", 7.5, _C["blk"])
+        txt(action, tx+8,  ty-31, "Helvetica",      6.5, _C["steel"])
+
+    Y -= 3*(TH+TGAP) + 6
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FOOTER
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    rect(0, 0, PW, 16, fill=_C["lgray"])
+    hline(0, 16, PW, _C["mgray"])
+    txt("Shopee Commerce Intelligence  ·  Generated "+date.today().strftime("%d %B %Y")+"  ·  CONFIDENTIAL",
+        PW/2, 5, "Helvetica", 7, _C["dgray"], "center")
+
+    c.save()
     buf.seek(0)
     return buf.read()
-
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;background:#f1f5f9!important;color:#1e293b!important}
-#MainMenu,footer,header[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="stDecoration"]{display:none!important}
-button[data-testid="collapsedControl"],div[data-testid="collapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;background:#2563eb!important;border-radius:0 8px 8px 0!important;box-shadow:2px 0 8px rgba(37,99,235,.25)!important}
-button[data-testid="collapsedControl"] svg,div[data-testid="collapsedControl"] svg{fill:white!important;stroke:white!important}
+#MainMenu,footer,div[data-testid="stToolbar"],div[data-testid="stDecoration"]{display:none!important}
+header[data-testid="stHeader"]{background:transparent!important;height:0!important;min-height:0!important}
+[data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;z-index:9999!important;background:#2563eb!important;border-radius:0 8px 8px 0!important;box-shadow:2px 2px 8px rgba(0,0,0,.2)!important;top:1rem!important;position:fixed!important;left:0!important}
+[data-testid="stSidebarCollapsedControl"] *,[data-testid="collapsedControl"] *{color:white!important;fill:white!important;stroke:white!important}
 .block-container{padding:1rem 2rem 3rem!important;background:#f1f5f9!important}
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
 section[data-testid="stSidebar"] *{color:#374151!important}
