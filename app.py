@@ -1564,122 +1564,102 @@ QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
 _chat_qa_json = json.dumps({q: {"body": b, "action": a} for q, (b, a) in HARDCODED_QA.items()}, ensure_ascii=False)
 _chat_qs_json = json.dumps(CHAT_QS, ensure_ascii=False)
 
-# Step 1: inject HTML + CSS via st.markdown (scripts stripped but HTML/CSS kept)
-st.markdown("""
-<style>
-@keyframes sc-glow{0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.5)}50%{box-shadow:0 4px 32px rgba(37,99,235,.9)}}
-@keyframes sc-slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes sc-msgIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-@keyframes sc-blink{0%,100%{opacity:.2}50%{opacity:1}}
-#sc-bubble{position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#0891b2);border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;animation:sc-glow 3s ease-in-out infinite;z-index:99999;color:white}
-#sc-badge{position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:#16a34a;border:2px solid #fff;font-size:6px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center}
-#sc-panel{position:fixed;bottom:86px;right:24px;width:355px;height:490px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.18);z-index:99998}
-#sc-panel.sc-open{display:flex;animation:sc-slideUp .2s ease both}
-#sc-head{background:linear-gradient(135deg,#2563eb,#0891b2);padding:11px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
-#sc-av{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px}
-#sc-hname{font-weight:700;font-size:13px;color:#fff;font-family:Inter,sans-serif}
-#sc-hstat{font-size:10px;color:rgba(255,255,255,.75);margin-top:1px;font-family:Inter,sans-serif}
-#sc-close{background:transparent;border:none;color:rgba(255,255,255,.7);font-size:22px;cursor:pointer;padding:0 4px;line-height:1;margin-left:auto}
-#sc-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
-#sc-msgs::-webkit-scrollbar{width:3px}
-#sc-msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
-.sc-msg{max-width:88%;animation:sc-msgIn .18s ease both;font-family:Inter,sans-serif}
-.sc-msg.sc-user{align-self:flex-end}
-.sc-msg.sc-bot{align-self:flex-start}
-.sc-bub-user{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.6}
-.sc-bub-bot{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}
-.sc-action-tip{background:#fffbeb;border-left:3px solid #d97706;padding:7px 10px;margin-top:8px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0}
-#sc-chips{padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid #f1f5f9;flex-shrink:0}
-.sc-chip{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:5px 11px;border-radius:20px;font-size:10px;cursor:pointer;white-space:nowrap;transition:background .12s;font-family:Inter,sans-serif}
-.sc-chip:hover{background:#dbeafe}
-.sc-dots{display:flex;gap:4px;align-items:center;padding:4px 0}
-.sc-dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}
-.sc-dot:nth-child(1){animation:sc-blink 1.2s 0s infinite}
-.sc-dot:nth-child(2){animation:sc-blink 1.2s .2s infinite}
-.sc-dot:nth-child(3){animation:sc-blink 1.2s .4s infinite}
-</style>
-<div id="sc-bubble"><span>🤖</span><span id="sc-badge">AI</span></div>
-<div id="sc-panel">
-  <div id="sc-head">
-    <div id="sc-av">🤖</div>
-    <div><div id="sc-hname">Shopee AI Analyst</div><div id="sc-hstat">● Tap a question for instant insights</div></div>
-    <button id="sc-close">×</button>
-  </div>
-  <div id="sc-msgs"></div>
-  <div id="sc-chips"></div>
-</div>
-""", unsafe_allow_html=True)
+_CHAT = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:transparent;overflow:hidden;width:100%;height:100%}
+@keyframes glow{0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.5)}50%{box-shadow:0 4px 34px rgba(37,99,235,.95)}}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes bl{0%,100%{opacity:.2}50%{opacity:1}}
+#bub{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;
+  background:linear-gradient(135deg,#2563eb,#0891b2);border:none;cursor:pointer;
+  font-size:22px;display:flex;align-items:center;justify-content:center;
+  animation:glow 3s ease-in-out infinite;z-index:9999;pointer-events:auto}
+#bub:hover{transform:scale(1.08)}
+#badge{position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;
+  background:#16a34a;border:2px solid #fff;font-size:6px;font-weight:800;color:#fff;
+  display:flex;align-items:center;justify-content:center;pointer-events:none}
+#panel{position:fixed;bottom:82px;right:20px;width:340px;height:470px;
+  background:#fff;border:1px solid #e2e8f0;border-radius:16px;display:none;
+  flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.2);
+  z-index:9998;pointer-events:auto}
+#panel.on{display:flex;animation:up .2s ease both}
+#hd{background:linear-gradient(135deg,#2563eb,#0891b2);padding:11px 14px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0}
+#av{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:16px}
+.hn{font-weight:700;font-size:13px;color:#fff;font-family:system-ui}
+.hs{font-size:10px;color:rgba(255,255,255,.75);margin-top:1px;font-family:system-ui}
+#cls{background:transparent;border:none;color:rgba(255,255,255,.7);font-size:22px;
+  cursor:pointer;padding:0 4px;line-height:1;margin-left:auto}
+#msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+#msgs::-webkit-scrollbar{width:3px}
+#msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
+.m{max-width:88%;animation:in .18s ease both;font-family:system-ui}
+.m.u{align-self:flex-end}
+.m.b{align-self:flex-start}
+.bu{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;
+  border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.6}
+.bb{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;
+  border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}
+.act{background:#fffbeb;border-left:3px solid #d97706;padding:6px 9px;margin-top:7px;
+  font-size:11px;color:#92400e;font-weight:600;border-radius:0 5px 5px 0}
+#chips{padding:7px 10px;display:flex;flex-wrap:wrap;gap:5px;
+  border-top:1px solid #f1f5f9;flex-shrink:0}
+.ch{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:5px 10px;
+  border-radius:20px;font-size:10px;cursor:pointer;white-space:nowrap;
+  font-family:system-ui;transition:background .1s}
+.ch:hover{background:#dbeafe}
+.dots{display:flex;gap:4px;align-items:center;padding:3px 0}
+.dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}
+.dot:nth-child(1){animation:bl 1.2s 0s infinite}
+.dot:nth-child(2){animation:bl 1.2s .2s infinite}
+.dot:nth-child(3){animation:bl 1.2s .4s infinite}
+</style></head><body>
+<div id="bub" onclick="tog()">🤖<span id="badge">AI</span></div>
+<div id="panel"><div id="hd"><div id="av">🤖</div>
+  <div><div class="hn">Shopee AI Analyst</div><div class="hs">● Tap a question for instant insights</div></div>
+  <button id="cls" onclick="tog()">×</button></div>
+<div id="msgs"></div><div id="chips"></div></div>
+<script>
+var QS=""" + _chat_qs_json + """;
+var QA=""" + _chat_qa_json + """;
+var isOpen=false,inited=false,busy=false;
 
-# Step 2: inject JS via components.html — queries elements already in parent DOM
-_JS = f"""<script>
-(function() {{
-  var QUESTIONS = {_chat_qs_json};
-  var QA        = {_chat_qa_json};
-  var D = window.parent.document;
-  var open=false, inited=false, loading=false;
+// Make our iframe a fixed full-screen overlay so position:fixed works correctly
+(function(){
+  var f=window.frameElement;
+  if(!f)return;
+  f.style.cssText='position:fixed!important;bottom:0!important;right:0!important;' +
+    'width:420px!important;height:620px!important;border:none!important;' +
+    'background:transparent!important;z-index:999999!important;pointer-events:none!important';
+})();
 
-  function ready(fn) {{
-    if (D.getElementById('sc-bubble')) {{ fn(); }}
-    else {{ setTimeout(function(){{ ready(fn); }}, 80); }}
-  }}
+function tog(){
+  isOpen=!isOpen;
+  document.getElementById('panel').classList.toggle('on',isOpen);
+  if(isOpen&&!inited){inited=true;add('b',"👋 Hi! I'm your Shopee analyst. Tap a question below for an instant insight.",null);chips();}
+}
+function chips(){
+  var b=document.getElementById('chips');b.innerHTML='';
+  QS.forEach(function(q){var e=document.createElement('button');e.className='ch';e.textContent=q;e.onclick=function(){go(q);};b.appendChild(e);});
+}
+function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+function add(role,text,action){
+  var d=document.createElement('div');d.className='m '+(role==='u'?'u':'b');
+  d.innerHTML=role==='u'?'<div class="bu">'+esc(text)+'</div>':'<div class="bb">'+esc(text)+(action?'<div class="act">⚡ '+esc(action)+'</div>':'')+'</div>';
+  var m=document.getElementById('msgs');m.appendChild(d);m.scrollTop=99999;
+}
+function go(q){
+  if(busy)return;busy=true;add('u',q,null);
+  var t=document.createElement('div');t.id='typ';t.className='m b';
+  t.innerHTML='<div class="bb"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
+  var m=document.getElementById('msgs');m.appendChild(t);m.scrollTop=99999;
+  setTimeout(function(){
+    var x=document.getElementById('typ');if(x)x.remove();
+    var r=QA[q];add('b',r?r.body:"No answer for that — try another question.",r?r.action:null);busy=false;
+  },700);
+}
+</script></body></html>"""
 
-  ready(function() {{
-    D.getElementById('sc-bubble').onclick = toggle;
-    D.getElementById('sc-close').onclick  = toggle;
-  }});
-
-  function toggle() {{
-    open = !open;
-    D.getElementById('sc-panel').classList.toggle('sc-open', open);
-    if (open && !inited) {{
-      inited = true;
-      addMsg('bot', "👋 Hi! I\'m your Shopee analyst. Tap a question below for an instant insight.", null);
-      renderChips();
-    }}
-  }}
-
-  function renderChips() {{
-    var box = D.getElementById('sc-chips');
-    box.innerHTML = '';
-    QUESTIONS.forEach(function(q) {{
-      var b = D.createElement('button');
-      b.className = 'sc-chip'; b.textContent = q;
-      b.onclick = function() {{ dispatch(q); }};
-      box.appendChild(b);
-    }});
-  }}
-
-  function esc(t) {{
-    return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-  }}
-
-  function addMsg(role, text, action) {{
-    var div = D.createElement('div');
-    div.className = 'sc-msg sc-' + (role==='user' ? 'user' : 'bot');
-    var inner = role==='user'
-      ? '<div class="sc-bub-user">'+esc(text)+'</div>'
-      : '<div class="sc-bub-bot">'+esc(text)+(action?'<div class="sc-action-tip">⚡ '+esc(action)+'</div>':'')+'</div>';
-    div.innerHTML = inner;
-    D.getElementById('sc-msgs').appendChild(div);
-    D.getElementById('sc-msgs').scrollTop = 99999;
-  }}
-
-  function dispatch(q) {{
-    if (loading) return;
-    addMsg('user', q, null); loading = true;
-    var typing = D.createElement('div');
-    typing.id = 'sc-typing'; typing.className = 'sc-msg sc-bot';
-    typing.innerHTML = '<div class="sc-bub-bot"><div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div></div>';
-    D.getElementById('sc-msgs').appendChild(typing);
-    D.getElementById('sc-msgs').scrollTop = 99999;
-    setTimeout(function() {{
-      var t = D.getElementById('sc-typing'); if(t) t.remove();
-      var qa = QA[q];
-      addMsg('bot', qa ? qa.body : "No answer found — try another question.", qa ? qa.action : null);
-      loading = false;
-    }}, 700);
-  }}
-}})();
-</script>"""
-
-components.html(_JS, height=0, scrolling=False)
+components.html(_CHAT, height=0, scrolling=False)
