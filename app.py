@@ -601,24 +601,34 @@ def generate_pdf_report(monthly, brands, campaigns, summary,
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html,body,[class*="css"],.stApp{font-family:'Inter',sans-serif!important;background:#f1f5f9!important;color:#1e293b!important}
-#MainMenu,footer,div[data-testid="stToolbar"],div[data-testid="stDecoration"]{display:none!important}
-.block-container{padding:1rem 2rem 3rem!important;background:#f1f5f9!important}
-section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important}
-section[data-testid="stSidebar"] *{color:#374151!important}
-.stSelectbox>div>div,.stMultiSelect>div>div{background:#f8fafc!important;border-color:#e2e8f0!important;color:#1e293b!important;border-radius:8px!important}
-.stButton>button{background:#2563eb!important;color:white!important;border:none!important;border-radius:8px!important;font-weight:600!important}
-.kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
-.kpi-val{font-size:22px;font-weight:800;margin-bottom:4px}
-.kpi-label{font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
-.kpi-sub{font-size:11px;color:#9ca3af}
-.section-header{font-size:20px;font-weight:800;color:#0f172a;margin-bottom:4px}
-.section-sub{font-size:13px;color:#64748b;margin-bottom:18px}
-.chart-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:14px}
-.chart-title{font-size:14px;font-weight:700;color:#1e293b;margin-bottom:4px}
-.chart-sub{font-size:11px;color:#9ca3af;margin-bottom:10px}
-hr{border-color:#e2e8f0!important}
-div[data-testid="stIFrame"]{border:none!important;background:transparent!important}
+/* Font + background — ONLY target specific elements, never [class*="css"] */
+html, body { font-family: 'Inter', sans-serif !important; background: #f1f5f9 !important; }
+.stApp { background: #f1f5f9 !important; }
+/* Hide only footer and decorations — NEVER hide header (sidebar toggle lives there) */
+footer { visibility: hidden !important; }
+div[data-testid="stDecoration"] { display: none !important; }
+/* Sidebar styling */
+section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p { color: #374151 !important; }
+/* Main content padding */
+.block-container { padding: 1rem 2rem 3rem !important; background: #f1f5f9 !important; }
+/* Form elements */
+.stSelectbox > div > div, .stMultiSelect > div > div { background: #f8fafc !important; border-color: #e2e8f0 !important; border-radius: 8px !important; }
+.stButton > button { background: #2563eb !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
+/* KPI cards */
+.kpi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+.kpi-val { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+.kpi-label { font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+.kpi-sub { font-size: 11px; color: #9ca3af; }
+.section-header { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+.section-sub { font-size: 13px; color: #64748b; margin-bottom: 18px; }
+.chart-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.05); margin-bottom: 14px; }
+.chart-title { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+.chart-sub { font-size: 11px; color: #9ca3af; margin-bottom: 10px; }
+hr { border-color: #e2e8f0 !important; }
+div[data-testid="stIFrame"] { border: none !important; background: transparent !important; }
 </style>""", unsafe_allow_html=True)
 
 
