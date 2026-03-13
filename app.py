@@ -8,9 +8,11 @@ from datetime import date, timedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                TableStyle, HRFlowable, KeepTogether,
+                                BaseDocTemplate, Frame, PageTemplate)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT, TA_JUSTIFY
 
 st.set_page_config(page_title="Shopee Commerce Intelligence", page_icon="⚡", layout="wide")
 
@@ -174,185 +176,30 @@ def badge(p):
     return f'<span style="color:{col};font-weight:700;font-size:12px">{arr}{abs(p):.1f}%</span>'
 
 # ── PDF Report Generator (1 page) ─────────────────────────────────────────────
-def generate_pdf_report(monthly, brands, campaigns, summary):
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-        leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=1.2*cm, bottomMargin=1.0*cm)
-    W = A4[0] - 3*cm
+def generate_pdf_report(monthly, brands, campaigns, summary,
+                        selected_months=None,
+                        report_title="Commerce Performance Report",
+                        prepared_by="Analytics Team",
+                        period_label="Oct 2025 – Jan 2026",
+                        company="Shopee Singapore"):
+    import importlib.util, sys, pathlib
+    spec = importlib.util.spec_from_file_location("gen_report",
+           pathlib.Path(__file__).parent / "gen_report.py")
+    if spec is None:
+        buf = io.BytesIO()
+        buf.write(b"%PDF-1.4")
+        buf.seek(0)
+        return buf.read()
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.make_report(
+        selected_months=selected_months,
+        report_title=report_title,
+        prepared_by=prepared_by,
+        period_label=period_label,
+        company=company,
+    )
 
-    SS = getSampleStyleSheet()
-    def sty(n, **kw): return ParagraphStyle(n, parent=SS["Normal"], **kw)
-
-    BLUE  = colors.HexColor("#2563eb"); DBLUE = colors.HexColor("#1e3a5f")
-    LGRAY = colors.HexColor("#f8fafc"); MGRAY = colors.HexColor("#e2e8f0")
-    DGRAY = colors.HexColor("#64748b"); GREEN = colors.HexColor("#16a34a")
-    RED   = colors.HexColor("#dc2626"); WHITE = colors.white
-    BLACK = colors.HexColor("#0f172a"); PURP  = colors.HexColor("#7c3aed")
-    AMBER = colors.HexColor("#d97706")
-
-    def fmts(v): return f"S${v:,.0f}"
-    def md(v):   return ("+" if v >= 0 else "") + f"{v:.1f}%" if pd.notna(v) else "—"
-
-    story = []
-
-    # Title bar
-    title_tbl = Table([[
-        Paragraph("Shopee Commerce Intelligence", sty("TT", fontSize=15, textColor=WHITE, fontName="Helvetica-Bold")),
-        Paragraph("Oct 2025 – Jan 2026  ·  800 orders  ·  772 customers",
-                  sty("TS", fontSize=8, textColor=colors.HexColor("#bfdbfe"), fontName="Helvetica", alignment=TA_RIGHT)),
-    ]], colWidths=[W*0.58, W*0.42])
-    title_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0),(-1,0), DBLUE),
-        ("ROWPADDING", (0,0),(-1,-1), 8),
-        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
-    ]))
-    story.append(title_tbl)
-    story.append(Spacer(1, 6))
-
-    # 6 KPI tiles
-    actual = monthly[monthly["is_forecast"]==False]
-    last   = actual.iloc[-1]
-    col_w  = W / 6
-    kpis = [
-        ("GMV",             fmts(int(summary["totalRev"])),                         last["rev_mom"],  True),
-        ("Avg Order Value", f"S${summary['totalRev']/summary['totalOrders']:.0f}",  last["aov_mom"],  True),
-        ("Total Orders",    f"{summary['totalOrders']:,}",                          last["ord_mom"],  True),
-        ("Avg Delivery",    f"{summary['avgDelivery']:.1f} days",                  -2.9,             False),
-        ("Repeat Rate",     f"{summary['repeatRate']}%",                            0.2,              True),
-        ("Voucher Usage",   f"{summary['voucherRate']}%",                          -3.1,              False),
-    ]
-    r0, r1, r2 = [], [], []
-    for lbl, val, dv, higher_better in kpis:
-        pos = (dv >= 0) if higher_better else (dv <= 0)
-        r0.append(Paragraph(lbl,    sty("KL", fontSize=7,  textColor=DGRAY, fontName="Helvetica", alignment=TA_CENTER)))
-        r1.append(Paragraph(val,    sty("KV", fontSize=11, textColor=DBLUE, fontName="Helvetica-Bold", alignment=TA_CENTER)))
-        r2.append(Paragraph(md(dv), sty("KD", fontSize=7,  textColor=GREEN if pos else RED, fontName="Helvetica-Bold", alignment=TA_CENTER)))
-    kpi_tbl = Table([r0, r1, r2], colWidths=[col_w]*6)
-    kpi_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0),(-1,-1), LGRAY),
-        ("BOX",        (0,0),(-1,-1), 0.5, MGRAY),
-        ("INNERGRID",  (0,0),(-1,-1), 0.5, MGRAY),
-        ("ROWPADDING", (0,0),(-1,-1), 5),
-        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
-    ]))
-    story.append(kpi_tbl)
-    story.append(Spacer(1, 7))
-
-    def shdr(txt, bg=BLUE):
-        return Paragraph(txt, sty("SH", fontSize=8.5, textColor=WHITE, fontName="Helvetica-Bold",
-                                  backColor=bg, leading=12, leftIndent=4))
-
-    # ── Monthly trend table ────────────────────────────────────────────────────
-    mo_rows = [["Month", "Revenue", "MoM Δ", "Orders", "AOV", "Vchr%"]]
-    for _, r in actual.iterrows():
-        mo_rows.append([r["ym"], fmts(r["revenue"]), md(r["rev_mom"]),
-                        str(r["orders"]), f"S${r['aov']}", f"{r['voucher_rate']}%"])
-    cw_mo = [1.5*cm, 1.6*cm, 1.0*cm, 1.1*cm, 1.1*cm, 1.0*cm]
-    mo_tbl = Table([[shdr("Monthly Revenue Trend")]] + [mo_rows[0]] + mo_rows[1:], colWidths=cw_mo)
-    mo_tbl.setStyle(TableStyle([
-        ("SPAN",             (0,0),(-1,0)),
-        ("BACKGROUND",       (0,0),(-1,0), BLUE),
-        ("BACKGROUND",       (0,1),(-1,1), colors.HexColor("#dbeafe")),
-        ("FONTNAME",         (0,1),(-1,1), "Helvetica-Bold"),
-        ("FONTSIZE",         (0,0),(-1,-1), 7.5),
-        ("ROWBACKGROUNDS",   (0,2),(-1,-1), [WHITE, LGRAY]),
-        ("GRID",             (0,1),(-1,-1), 0.3, MGRAY),
-        ("ROWPADDING",       (0,0),(-1,-1), 4),
-        ("ALIGN",            (1,1),(-1,-1), "CENTER"),
-    ]))
-    for ri, row in enumerate(mo_rows[1:], start=2):
-        txt = row[2]
-        col = GREEN if txt.startswith("+") else (RED if txt.startswith("-") else None)
-        if col: mo_tbl.setStyle(TableStyle([("TEXTCOLOR",(2,ri),(2,ri),col),("FONTNAME",(2,ri),(2,ri),"Helvetica-Bold")]))
-
-    # ── Brands table (top 3 + bottom 2 clearly labelled) ──────────────────────
-    brand_deltas = {"LG":+12.3,"Philips":+4.1,"Nike":-2.8,"Anker":-6.2,"COSRX":-15.4}
-    bs = brands.sort_values("revenue", ascending=False).reset_index(drop=True)
-    bs["aov_v"] = (bs["revenue"]/bs["orders"]).round(0).astype(int)
-    total_br = bs["revenue"].sum()
-
-    br_rows = [["#", "Brand", "Revenue", "MoM Δ", "AOV", "Share", "Tier"]]
-    for i, r in bs.iterrows():
-        dv   = brand_deltas.get(r["name"], 0)
-        tier = "Top" if i < 3 else "Low"
-        br_rows.append([
-            str(i+1), r["name"], fmts(r["revenue"]),
-            md(dv), f"S${r['aov_v']}",
-            f"{r['revenue']/total_br*100:.1f}%", tier
-        ])
-    cw_br = [0.5*cm, 1.3*cm, 1.5*cm, 1.0*cm, 1.0*cm, 1.0*cm, 0.8*cm]
-    br_tbl = Table([[shdr("Brand Performance — Top 3 & Bottom Brands", DBLUE)]] + [br_rows[0]] + br_rows[1:], colWidths=cw_br)
-    br_tbl.setStyle(TableStyle([
-        ("SPAN",           (0,0),(-1,0)),
-        ("BACKGROUND",     (0,0),(-1,0), DBLUE),
-        ("BACKGROUND",     (0,1),(-1,1), colors.HexColor("#e0e7ff")),
-        ("FONTNAME",       (0,1),(-1,1), "Helvetica-Bold"),
-        ("FONTSIZE",       (0,0),(-1,-1), 7.5),
-        ("ROWBACKGROUNDS", (0,2),(-1,-1), [WHITE, LGRAY]),
-        ("GRID",           (0,1),(-1,-1), 0.3, MGRAY),
-        ("ROWPADDING",     (0,0),(-1,-1), 4),
-        ("ALIGN",          (2,1),(-1,-1), "CENTER"),
-        # Green bg for top 3 tier cell
-        ("BACKGROUND",     (6,2),(6,4), colors.HexColor("#dcfce7")),
-        ("TEXTCOLOR",      (6,2),(6,4), GREEN),
-        # Red bg for bottom 2 tier cell
-        ("BACKGROUND",     (6,5),(6,6), colors.HexColor("#fee2e2")),
-        ("TEXTCOLOR",      (6,5),(6,6), RED),
-    ]))
-    for ri, row in enumerate(br_rows[1:], start=2):
-        dv = float(row[3].replace("+","").replace("%",""))
-        col = GREEN if dv >= 0 else RED
-        br_tbl.setStyle(TableStyle([("TEXTCOLOR",(3,ri),(3,ri),col),("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold")]))
-
-    two_col = Table([[mo_tbl, br_tbl]], colWidths=[W*0.45, W*0.55])
-    two_col.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(1,0),(1,0),8)]))
-    story.append(two_col)
-    story.append(Spacer(1, 7))
-
-    # ── Campaign ROI table ─────────────────────────────────────────────────────
-    camp_spend = {"Double Day":18000,"Mega Campaign":22000,"Brand Day":14000,"Flash Sale":8000}
-    camp_delta = {"Double Day":+18.4,"Mega Campaign":+5.2,"Brand Day":-3.1,"Flash Sale":-8.6}
-    cr_rows = [["Campaign", "Revenue", "MoM Δ", "Est. Spend", "ROI", "ROAS", "Orders", "AOV"]]
-    for _, r in campaigns.iterrows():
-        spend = camp_spend[r["name"]]
-        roi   = (r["revenue"] - spend) / spend * 100
-        roas  = r["revenue"] / spend
-        dv    = camp_delta[r["name"]]
-        cr_rows.append([r["name"], fmts(r["revenue"]), md(dv), fmts(spend),
-                        f"{roi:.0f}%", f"{roas:.1f}x", str(r["orders"]),
-                        f"S${r['revenue']//r['orders']}"])
-    cw_cr = [W*0.16, W*0.12, W*0.08, W*0.12, W*0.08, W*0.08, W*0.08, W*0.08]
-    cr_tbl = Table([[shdr("Campaign ROI Analysis", PURP)]] + [cr_rows[0]] + cr_rows[1:], colWidths=cw_cr)
-    cr_tbl.setStyle(TableStyle([
-        ("SPAN",           (0,0),(-1,0)),
-        ("BACKGROUND",     (0,0),(-1,0), PURP),
-        ("BACKGROUND",     (0,1),(-1,1), colors.HexColor("#ede9fe")),
-        ("FONTNAME",       (0,1),(-1,1), "Helvetica-Bold"),
-        ("FONTSIZE",       (0,0),(-1,-1), 7.5),
-        ("ROWBACKGROUNDS", (0,2),(-1,-1), [WHITE, LGRAY]),
-        ("GRID",           (0,1),(-1,-1), 0.3, MGRAY),
-        ("ROWPADDING",     (0,0),(-1,-1), 4),
-        ("ALIGN",          (1,1),(-1,-1), "CENTER"),
-    ]))
-    for ri, row in enumerate(cr_rows[1:], start=2):
-        for ci, txt in [(2, row[2]), (4, row[4])]:
-            try: pos = txt.startswith("+") or float(txt.replace("%","")) > 0
-            except: pos = True
-            col = GREEN if pos else RED
-            cr_tbl.setStyle(TableStyle([("TEXTCOLOR",(ci,ri),(ci,ri),col),("FONTNAME",(ci,ri),(ci,ri),"Helvetica-Bold")]))
-    story.append(cr_tbl)
-    story.append(Spacer(1, 5))
-
-    # Footer
-    story.append(HRFlowable(width=W, thickness=0.4, color=MGRAY, spaceAfter=3))
-    story.append(Paragraph(
-        f"Shopee Commerce Intelligence  ·  Generated {date.today().strftime('%d %b %Y')}  ·  Confidential",
-        sty("FT", fontSize=7, textColor=DGRAY, fontName="Helvetica", alignment=TA_CENTER)
-    ))
-
-    doc.build(story)
-    buf.seek(0)
-    return buf.read()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
@@ -412,10 +259,32 @@ with st.sidebar:
     if up: st.success(f"✓ {up.name}")
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px">📥 Download Report</p>', unsafe_allow_html=True)
+
+    all_yms  = ["Oct 2025","Nov 2025","Dec 2025","Jan 2026","Feb 2026*"]
+    rpt_mons = st.multiselect("Months to include", all_yms, default=["Oct 2025","Nov 2025","Dec 2025","Jan 2026"],
+                              key="rpt_months", label_visibility="visible")
+    rpt_title  = st.text_input("Report title",   value="Commerce Performance Report", key="rpt_title")
+    rpt_author = st.text_input("Prepared by",    value="Analytics Team", key="rpt_author")
+    rpt_company = st.text_input("Company / Team", value="Shopee Singapore", key="rpt_company")
+
+    if rpt_mons:
+        first = rpt_mons[0].replace("*","").strip()
+        last_m = rpt_mons[-1].replace("*","").strip()
+        period_lbl = first + (" – " + last_m if last_m != first else "")
+    else:
+        period_lbl = "Custom Period"
+
     try:
-        pdf_bytes = generate_pdf_report(monthly_data, brands_data, campaigns_data, SUMMARY)
+        pdf_bytes = generate_pdf_report(
+            monthly_data, brands_data, campaigns_data, SUMMARY,
+            selected_months=rpt_mons if rpt_mons else None,
+            report_title=rpt_title or "Commerce Performance Report",
+            prepared_by=rpt_author or "Analytics Team",
+            period_label=period_lbl,
+            company=rpt_company or "Shopee Singapore",
+        )
         st.download_button(
-            label="Download 1-Page PDF Report",
+            label="⬇ Download Executive PDF",
             data=pdf_bytes,
             file_name=f"shopee_report_{date.today().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
