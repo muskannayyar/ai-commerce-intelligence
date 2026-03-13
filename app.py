@@ -1560,72 +1560,175 @@ for q, (body, action) in HARDCODED_QA.items():
     qa_js_entries.append(f"  '{q_esc}': {{ body: '{body_esc}', action: '{action_esc}' }}")
 QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
 
-CHAT_HTML = """<!DOCTYPE html><html><head><style>body{margin:0;padding:0;background:transparent;}</style></head><body><script>
-(function() {
-  const QUESTIONS = """ + json.dumps(CHAT_QS) + """;
-  const QA = """ + QA_JS + """;
-  const P = window.parent, PD = P.document;
-  if (PD.getElementById('sc-bubble')) return;
-  const style = PD.createElement('style');
-  style.id = 'sc-styles';
-  style.textContent = `
-    @keyframes sc-slideUp { from{opacity:0;transform:translateY(14px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
-    @keyframes sc-msgIn   { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes sc-blink   { 0%,100%{opacity:.25} 50%{opacity:1} }
-    @keyframes sc-glow    { 0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.45)} 50%{box-shadow:0 4px 32px rgba(37,99,235,.8)} }
-    #sc-bubble{position:fixed;bottom:24px;right:24px;z-index:99999;width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#2563eb,#0891b2);font-size:22px;display:flex;align-items:center;justify-content:center;animation:sc-glow 3s ease-in-out infinite;transition:transform .18s}
-    #sc-bubble:hover{transform:scale(1.1)}
-    #sc-badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;border-radius:50%;background:#16a34a;border:2px solid #fff;font-size:7px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;pointer-events:none}
-    #sc-panel{position:fixed;bottom:88px;right:24px;z-index:99998;width:370px;height:520px;background:#fff;border:1px solid #e2e8f0;border-radius:18px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.18)}
-    #sc-panel.sc-open{display:flex;animation:sc-slideUp .22s ease both}
-    #sc-head{background:linear-gradient(135deg,#2563eb,#0891b2);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-shrink:0}
-    #sc-head .sc-av{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
-    #sc-head .sc-name{font-weight:700;font-size:13px;color:#fff;font-family:Inter,sans-serif}
-    #sc-head .sc-stat{font-size:10px;color:rgba(255,255,255,.8);margin-top:2px;font-family:Inter,sans-serif}
-    #sc-close{background:transparent;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;padding:2px 6px;border-radius:5px}
-    #sc-close:hover{color:#fff;background:rgba(255,255,255,.15)}
-    #sc-msgs{flex:1;overflow-y:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:8px}
-    #sc-msgs::-webkit-scrollbar{width:3px}
-    #sc-msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
-    .sc-msg{max-width:87%;animation:sc-msgIn .18s ease both;font-family:Inter,sans-serif}
-    .sc-msg.sc-user{align-self:flex-end}
-    .sc-msg.sc-ai{align-self:flex-start}
-    .sc-bub-user{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.65}
-    .sc-bub-ai{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}
-    .sc-action{background:#fffbeb;border-left:3px solid #d97706;padding:7px 10px;margin-top:8px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0}
-    #sc-chips{padding:0 10px 8px;display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
-    .sc-chip{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:4px 10px;border-radius:20px;font-size:10px;cursor:pointer;transition:all .12s;white-space:nowrap}
-    .sc-chip:hover{background:#dbeafe;border-color:#93c5fd}
-    .sc-typing{display:flex;gap:4px;align-items:center}
-    .sc-dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}
-    .sc-dot:nth-child(1){animation:sc-blink 1.2s 0s infinite}
-    .sc-dot:nth-child(2){animation:sc-blink 1.2s .2s infinite}
-    .sc-dot:nth-child(3){animation:sc-blink 1.2s .4s infinite}
-  `;
-  PD.head.appendChild(style);
-  const wrap = PD.createElement('div');
-  wrap.id = 'sc-root';
-  wrap.innerHTML = `<button id="sc-bubble" onclick="scToggle()">🤖<div id="sc-badge">AI</div></button>
-    <div id="sc-panel">
-      <div id="sc-head">
-        <div class="sc-av">🤖</div>
-        <div style="flex:1"><div class="sc-name">Shopee AI Analyst</div><div class="sc-stat">● Instant insights · tap a question below</div></div>
-        <button id="sc-close" onclick="scToggle()">×</button>
-      </div>
-      <div id="sc-msgs"></div>
-      <div id="sc-chips"></div>
-    </div>`;
-  PD.body.appendChild(wrap);
-  let scOpen=false,scInited=false,scLoading=false;
-  P.scToggle=function(){scOpen=!scOpen;PD.getElementById('sc-panel').classList.toggle('sc-open',scOpen);if(scOpen&&!scInited){scInited=true;scAddMsg('ai',"👋 Hi! I'm your Shopee analyst. Tap a question below to get instant insights.");scRenderChips();}};
-  function scRenderChips(){const box=PD.getElementById('sc-chips');box.innerHTML='';QUESTIONS.forEach(q=>{const b=PD.createElement('button');b.className='sc-chip';b.textContent=q;b.onclick=()=>{scDispatch(q);};box.appendChild(b);});}
-  function scAddMsg(role,text,actionText){const div=PD.createElement('div');div.className='sc-msg '+(role==='user'?'sc-user':'sc-ai');if(role==='user'){div.innerHTML='<div class="sc-bub-user">'+scEsc(text)+'</div>';}else{let inner='<div class="sc-bub-ai">'+scEsc(text);if(actionText)inner+='<div class="sc-action">⚡ Action: '+scEsc(actionText)+'</div>';inner+='</div>';div.innerHTML=inner;}PD.getElementById('sc-msgs').appendChild(div);scScrollBottom();}
-  function scShowTyping(){const div=PD.createElement('div');div.id='sc-typing';div.className='sc-msg sc-ai';div.innerHTML='<div class="sc-bub-ai"><div class="sc-typing"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div></div>';PD.getElementById('sc-msgs').appendChild(div);scScrollBottom();}
-  function scHideTyping(){const t=PD.getElementById('sc-typing');if(t)t.remove();}
-  function scScrollBottom(){const m=PD.getElementById('sc-msgs');m.scrollTop=m.scrollHeight;}
-  function scEsc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');}
-  function scDispatch(q){if(scLoading)return;scAddMsg('user',q);scLoading=true;scShowTyping();setTimeout(()=>{scHideTyping();const qa=QA[q];if(qa){scAddMsg('ai',qa.body,qa.action);}else{scAddMsg('ai',"I don't have a preset answer for that. Try one of the questions below!");}scLoading=false;},900);}
-})();
-</script></body></html>"""
+# ── Floating AI chatbot via components.html (self-contained, no cross-frame) ──
+_chat_qa_json  = json.dumps({q: {"body": b, "action": a} for q, (b, a) in HARDCODED_QA.items()}, ensure_ascii=False)
+_chat_qs_json  = json.dumps(CHAT_QS, ensure_ascii=False)
 
-components.html(CHAT_HTML, height=0, scrolling=False)
+_CHAT_HTML = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:transparent;overflow:hidden;font-family:Inter,system-ui,sans-serif}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes msgIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.5)}50%{box-shadow:0 4px 32px rgba(37,99,235,.9)}}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+
+#bubble{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;
+  background:linear-gradient(135deg,#2563eb,#0891b2);border:none;cursor:pointer;
+  font-size:22px;display:flex;align-items:center;justify-content:center;
+  animation:glow 3s ease-in-out infinite;z-index:9999;color:white}
+#badge{position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;
+  background:#16a34a;border:2px solid #fff;font-size:6px;font-weight:800;color:#fff;
+  display:flex;align-items:center;justify-content:center}
+
+#panel{position:fixed;bottom:82px;right:20px;width:355px;height:500px;
+  background:#fff;border:1px solid #e2e8f0;border-radius:16px;
+  display:none;flex-direction:column;overflow:hidden;
+  box-shadow:0 16px 48px rgba(0,0,0,.18);z-index:9998}
+#panel.open{display:flex;animation:slideUp .2s ease both}
+
+#head{background:linear-gradient(135deg,#2563eb,#0891b2);padding:11px 14px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0}
+.av{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:16px}
+.hname{font-weight:700;font-size:13px;color:#fff}
+.hstat{font-size:10px;color:rgba(255,255,255,.75);margin-top:1px}
+#close-btn{background:transparent;border:none;color:rgba(255,255,255,.7);
+  font-size:20px;cursor:pointer;padding:0 4px;line-height:1;margin-left:auto}
+
+#msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+#msgs::-webkit-scrollbar{width:3px}
+#msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
+
+.msg{max-width:88%;animation:msgIn .18s ease both}
+.msg.user{align-self:flex-end}
+.msg.bot{align-self:flex-start}
+.bub-user{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;
+  padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.6}
+.bub-bot{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;
+  padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}
+.action-tip{background:#fffbeb;border-left:3px solid #d97706;padding:7px 10px;
+  margin-top:8px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 6px 6px 0}
+
+#chips{padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px;
+  border-top:1px solid #f1f5f9;flex-shrink:0}
+.chip{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;
+  padding:5px 11px;border-radius:20px;font-size:10px;cursor:pointer;
+  white-space:nowrap;transition:background .12s}
+.chip:hover{background:#dbeafe}
+
+.dots{display:flex;gap:4px;align-items:center;padding:4px 0}
+.dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}
+.dot:nth-child(1){animation:blink 1.2s 0s infinite}
+.dot:nth-child(2){animation:blink 1.2s .2s infinite}
+.dot:nth-child(3){animation:blink 1.2s .4s infinite}
+</style>
+</head>
+<body>
+
+<button id="bubble" onclick="toggle()">🤖<span id="badge">AI</span></button>
+
+<div id="panel">
+  <div id="head">
+    <div class="av">🤖</div>
+    <div>
+      <div class="hname">Shopee AI Analyst</div>
+      <div class="hstat">● Tap a question below for instant insights</div>
+    </div>
+    <button id="close-btn" onclick="toggle()">×</button>
+  </div>
+  <div id="msgs"></div>
+  <div id="chips"></div>
+</div>
+
+<script>
+var QUESTIONS = """ + _chat_qs_json + """;
+var QA        = """ + _chat_qa_json + """;
+
+var open = false, inited = false, loading = false;
+
+function toggle() {
+  open = !open;
+  document.getElementById('panel').classList.toggle('open', open);
+  if (open && !inited) {
+    inited = true;
+    addMsg('bot', "👋 Hi! I'm your Shopee analyst. Tap a question to get an instant insight.", null);
+    renderChips();
+  }
+}
+
+function renderChips() {
+  var box = document.getElementById('chips');
+  box.innerHTML = '';
+  QUESTIONS.forEach(function(q) {
+    var b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = q;
+    b.onclick = function() { dispatch(q); };
+    box.appendChild(b);
+  });
+}
+
+function esc(t) {
+  return String(t)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function addMsg(role, text, action) {
+  var div = document.createElement('div');
+  div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  if (role === 'user') {
+    div.innerHTML = '<div class="bub-user">' + esc(text) + '</div>';
+  } else {
+    var inner = '<div class="bub-bot">' + esc(text);
+    if (action) inner += '<div class="action-tip">⚡ ' + esc(action) + '</div>';
+    inner += '</div>';
+    div.innerHTML = inner;
+  }
+  document.getElementById('msgs').appendChild(div);
+  scroll();
+}
+
+function showTyping() {
+  var div = document.createElement('div');
+  div.id = 'typing'; div.className = 'msg bot';
+  div.innerHTML = '<div class="bub-bot"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
+  document.getElementById('msgs').appendChild(div);
+  scroll();
+}
+
+function hideTyping() {
+  var t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+function scroll() {
+  var m = document.getElementById('msgs');
+  m.scrollTop = m.scrollHeight;
+}
+
+function dispatch(q) {
+  if (loading) return;
+  addMsg('user', q, null);
+  loading = true;
+  showTyping();
+  setTimeout(function() {
+    hideTyping();
+    var qa = QA[q];
+    if (qa) {
+      addMsg('bot', qa.body, qa.action);
+    } else {
+      addMsg('bot', "I don't have an answer for that — try one of the questions below.", null);
+    }
+    loading = false;
+  }, 700);
+}
+</script>
+</body>
+</html>"""
+
+components.html(_CHAT_HTML, height=600, scrolling=False)
