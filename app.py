@@ -721,12 +721,8 @@ st.markdown("""<style>
 /* Font + background — ONLY target specific elements, never [class*="css"] */
 html, body { font-family: 'Inter', sans-serif !important; background: #f1f5f9 !important; }
 .stApp { background: #f1f5f9 !important; }
-/* Hide toolbar buttons but KEEP the header element — sidebar toggle lives inside it */
 footer { visibility: hidden !important; }
 div[data-testid="stDecoration"] { display: none !important; }
-div[data-testid="stToolbar"] { display: none !important; }
-#MainMenu { display: none !important; }
-/* Make header bar invisible but still present (so toggle button works) */
 
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
