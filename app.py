@@ -727,7 +727,7 @@ div[data-testid="stDecoration"] { display: none !important; }
 div[data-testid="stToolbar"] { visibility: hidden !important; }
 #MainMenu { visibility: hidden !important; }
 /* Header: invisible background, no border, but full height so toggle renders */
-header[data-testid="stHeader"] { background: rgba(241,245,249,1) !important; border-bottom: none !important; box-shadow: none !important; }
+header[data-testid="stHeader"] { background: #ffffff !important; border-bottom: 1px solid #e2e8f0 !important; box-shadow: none !important; }
 /* Sidebar toggle button: always fully visible */
 header[data-testid="stHeader"] button,
 button[data-testid="collapsedControl"],
