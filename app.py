@@ -1626,14 +1626,7 @@ var QS=""" + _chat_qs_json + """;
 var QA=""" + _chat_qa_json + """;
 var isOpen=false,inited=false,busy=false;
 
-// Make our iframe a fixed full-screen overlay so position:fixed works correctly
-(function(){
-  var f=window.frameElement;
-  if(!f)return;
-  f.style.cssText='position:fixed!important;bottom:0!important;right:0!important;' +
-    'width:420px!important;height:620px!important;border:none!important;' +
-    'background:transparent!important;z-index:999999!important;';
-})();
+
 
 function tog(){
   isOpen=!isOpen;
@@ -1662,4 +1655,4 @@ function go(q){
 }
 </script></body></html>"""
 
-components.html(_CHAT, height=0, scrolling=False)
+components.html(_CHAT, height=620, scrolling=False)
