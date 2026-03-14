@@ -725,6 +725,7 @@ footer { visibility: hidden !important; }
 div[data-testid="stDecoration"] { display: none !important; }
 div[data-testid="stToolbar"] { visibility: hidden !important; }
 #MainMenu { visibility: hidden !important; }
+header[data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; box-shadow: none !important; }
 
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
