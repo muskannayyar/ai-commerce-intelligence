@@ -1632,7 +1632,7 @@ var isOpen=false,inited=false,busy=false;
   if(!f)return;
   f.style.cssText='position:fixed!important;bottom:0!important;right:0!important;' +
     'width:420px!important;height:620px!important;border:none!important;' +
-    'background:transparent!important;z-index:999999!important;pointer-events:none!important';
+    'background:transparent!important;z-index:999999!important;';
 })();
 
 function tog(){
