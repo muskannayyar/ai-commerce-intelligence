@@ -1561,25 +1561,29 @@ for q, (body, action) in HARDCODED_QA.items():
 QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
 
 # ── Floating AI chatbot ──────────────────────────────────────────────────────
-_bot_qa   = {q: {"b": body, "a": action} for q, (body, action) in HARDCODED_QA.items()}
-_bot_data = json.dumps({"qa": _bot_qa, "qs": CHAT_QS}, ensure_ascii=False)
-
-# Encode JS as base64 — zero quote-escaping issues in the onerror attribute
-import base64 as _b64
-_bot_js_b64 = _b64.b64encode(""" + repr(JS_TEMPLATE) + """.encode()).decode()
-
-_bot_css  = """ + repr(CSS) + """
-_bot_html = """ + repr(HTML) + """
-
-# data-q stores JSON; onerror=eval(atob(...)) runs the JS — no script tags needed
-_bot_data_tag = '<div id="_scdata" data-q=\'\' style="display:none"></div>'
-_bot_img_tag  = '<img src="x" onerror="eval(atob(\'' + _bot_js_b64 + '\'))" style="display:none" alt="">'
-
-st.markdown(_bot_css + _bot_html + _bot_data_tag + _bot_img_tag, unsafe_allow_html=True)
-
-# Write JSON into data-q attribute via components.html (safe — only setAttribute, no DOM creation)
-_set_data_js = (
-    "<script>var e=window.parent.document.getElementById('_scdata');"
-    "if(e)e.setAttribute('data-q'," + json.dumps(json.dumps({"qa": _bot_qa, "qs": CHAT_QS}, ensure_ascii=False)) + ");</script>"
+_bot_qa = {q: {'b': body, 'a': action} for q, (body, action) in HARDCODED_QA.items()}
+_bot_qs = CHAT_QS
+_bot_css = '@keyframes gl{0%,100%{box-shadow:0 4px 18px rgba(37,99,235,.5)}50%{box-shadow:0 4px 30px rgba(37,99,235,.9)}}@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}@keyframes bl{0%,100%{opacity:.2}50%{opacity:1}}body{margin:0;background:transparent;overflow:hidden}#bub{position:fixed;bottom:20px;right:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#0891b2);border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;animation:gl 3s ease-in-out infinite;z-index:9999;color:white}#badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;border-radius:50%;background:#16a34a;border:2px solid #fff;font-size:7px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;pointer-events:none}#panel{position:fixed;bottom:84px;right:20px;width:350px;height:480px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.2);z-index:9998}#panel.on{display:flex;animation:up .2s ease both}#hd{background:linear-gradient(135deg,#2563eb,#0891b2);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-shrink:0}#av{width:33px;height:33px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px}#msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}#msgs::-webkit-scrollbar{width:3px}#msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}.msg{max-width:88%;animation:fi .18s ease both;font-family:Inter,system-ui,sans-serif}.msg.u{align-self:flex-end}.msg.b{align-self:flex-start}.bu{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.6}.bb{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75}.ac{background:#fffbeb;border-left:3px solid #d97706;padding:6px 9px;margin-top:7px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 5px 5px 0}#chips{padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid #f1f5f9;flex-shrink:0}.ch{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:5px 11px;border-radius:20px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:Inter,system-ui,sans-serif}.ch:hover{background:#dbeafe}.dots{display:flex;gap:4px;align-items:center;padding:3px 0}.dot{width:6px;height:6px;border-radius:50%;background:#93c5fd}.dot:nth-child(1){animation:bl 1.2s 0s infinite}.dot:nth-child(2){animation:bl 1.2s .2s infinite}.dot:nth-child(3){animation:bl 1.2s .4s infinite}'
+_bot_js  = 'var open=false,inited=false,busy=false;function tog(){open=!open;document.getElementById(\'panel\').classList.toggle(\'on\',open);if(open&&!inited){inited=true;add(\'b\',\'Hi! I am your Shopee analyst. Tap a question below.\',null);chips();}}function chips(){var b=document.getElementById(\'chips\');b.innerHTML=\'\';QS.forEach(function(q){var e=document.createElement(\'button\');e.className=\'ch\';e.textContent=q;e.onclick=function(){go(q);};b.appendChild(e);});}function esc(t){return String(t).replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');}function add(r,t,a){var d=document.createElement(\'div\');d.className=\'msg \'+(r===\'u\'?\'u\':\'b\');var bub=r===\'u\'?\'<div class="bu">\'+esc(t)+\'</div>\':\'<div class="bb">\'+esc(t)+(a?\'<div class="ac">&#9889; \'+esc(a)+\'</div>\':\'\')+  \'</div>\';d.innerHTML=bub;var m=document.getElementById(\'msgs\');m.appendChild(d);m.scrollTop=99999;}function go(q){if(busy)return;busy=true;add(\'u\',q,null);var t=document.createElement(\'div\');t.id=\'typ\';t.className=\'msg b\';t.innerHTML=\'<div class="bb"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>\';var m=document.getElementById(\'msgs\');m.appendChild(t);m.scrollTop=99999;setTimeout(function(){var x=document.getElementById(\'typ\');if(x)x.remove();var r=QA[q];add(\'b\',r?r.b:\'No answer.\',r?r.a:null);busy=false;},700);}var fr=window.frameElement;if(fr){fr.style.cssText=\'position:fixed!important;bottom:0!important;right:0!important;width:420px!important;height:600px!important;border:none!important;background:transparent!important;z-index:99999!important;\';}'
+_bot_html = (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><style>"
+    + _bot_css +
+    "</style></head><body>"
+    "<button id='bub' onclick='tog()'>&#x1F916;<span id='badge'>AI</span></button>"
+    "<div id='panel'><div id='hd'>"
+    "<div id='av'>&#x1F916;</div>"
+    "<div style='flex:1'>"
+    "<div style='font-weight:700;font-size:13px;color:#fff;font-family:Inter,sans-serif'>Shopee AI Analyst</div>"
+    "<div style='font-size:10px;color:rgba(255,255,255,.75)'>Tap a question for an instant insight</div>"
+    "</div>"
+    "<button onclick='tog()' style='background:transparent;border:none;color:rgba(255,255,255,.7);font-size:22px;cursor:pointer;line-height:1;margin-left:auto'>&#215;</button>"
+    "</div><div id='msgs'></div><div id='chips'></div></div>"
+    "<script>var QA="
+    + json.dumps(_bot_qa, ensure_ascii=False) +
+    ";var QS="
+    + json.dumps(_bot_qs, ensure_ascii=False) +
+    ";"
+    + _bot_js +
+    "</script></body></html>"
 )
-components.html(_set_data_js, height=0, scrolling=False)
+components.html(_bot_html, height=0, scrolling=False)
