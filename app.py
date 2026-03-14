@@ -723,9 +723,15 @@ html, body { font-family: 'Inter', sans-serif !important; background: #f1f5f9 !i
 .stApp { background: #f1f5f9 !important; }
 footer { visibility: hidden !important; }
 div[data-testid="stDecoration"] { display: none !important; }
+/* Hide toolbar text/icons but keep header alive for sidebar toggle */
 div[data-testid="stToolbar"] { visibility: hidden !important; }
 #MainMenu { visibility: hidden !important; }
-header[data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; box-shadow: none !important; }
+/* Header: invisible background, no border, but full height so toggle renders */
+header[data-testid="stHeader"] { background: rgba(241,245,249,1) !important; border-bottom: none !important; box-shadow: none !important; }
+/* Sidebar toggle button: always fully visible */
+header[data-testid="stHeader"] button,
+button[data-testid="collapsedControl"],
+button[data-testid="baseButton-header"] { opacity: 1 !important; visibility: visible !important; color: #374151 !important; }
 
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
