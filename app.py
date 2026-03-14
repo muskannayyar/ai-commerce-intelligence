@@ -727,7 +727,7 @@ div[data-testid="stDecoration"] { display: none !important; }
 div[data-testid="stToolbar"] { display: none !important; }
 #MainMenu { display: none !important; }
 /* Make header bar invisible but still present (so toggle button works) */
-header[data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; height: auto !important; min-height: 2.875rem !important; }
+
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
 section[data-testid="stSidebar"] .stMarkdown,
