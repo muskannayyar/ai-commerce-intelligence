@@ -905,7 +905,7 @@ tot_ord = filt_m["orders"].sum()
 # OVERVIEW
 # ══════════════════════════════════════════════════════════════════════════════
 if "Overview" in view:
-    st.markdown('## 📊 Overview')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📊 Overview</p>', unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Shopee Singapore · Oct 2025 – Jan 2026 · 800 orders</div>',unsafe_allow_html=True)
     # ── AI Customer Segmentation panel
     with st.expander("🧠 AI Customer Segments — click to expand", expanded=False):
@@ -1010,7 +1010,7 @@ if "Overview" in view:
 # MOM
 # ══════════════════════════════════════════════════════════════════════════════
 elif "MoM" in view:
-    st.markdown('## 📅 Month-over-Month Analysis')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📅 Month-over-Month Analysis</p>', unsafe_allow_html=True)
     show_fc=st.toggle("Include Feb 2026 Forecast",value=True)
     comp=monthly_data[monthly_data["ym"].isin(months_compare)]
     if show_fc:
@@ -1054,7 +1054,7 @@ elif "MoM" in view:
 # WEEKLY
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Weekly" in view:
-    st.markdown('<div class="section-header">📆 Weekly Analysis</div>',unsafe_allow_html=True)
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📆 Weekly Analysis</p>', unsafe_allow_html=True)
     wkey=st.radio("w",["revenue","orders","aov","voucher_rate"],horizontal=True,label_visibility="collapsed",
                   format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
     st.markdown('<div class="chart-card"><div class="chart-title">Weekly Trend</div>',unsafe_allow_html=True)
@@ -1102,7 +1102,7 @@ elif "Weekly" in view:
 # DAILY
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Daily" in view:
-    st.markdown('## 📆 Daily Analysis')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📆 Daily Analysis</p>', unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Day-by-day · Singapore holidays highlighted</div>',unsafe_allow_html=True)
     dkey=st.radio("dk",["revenue","orders","aov","voucher_rate"],horizontal=True,label_visibility="collapsed",
                   format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
@@ -1148,7 +1148,7 @@ elif "Daily" in view:
 # CAMPAIGNS
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Campaigns" in view:
-    st.markdown('## 📣 Campaigns & Channels')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📣 Campaigns & Channels</p>', unsafe_allow_html=True)
     col_l,col_r=st.columns(2)
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Campaign Revenue</div>',unsafe_allow_html=True)
@@ -1218,7 +1218,7 @@ elif "Campaigns" in view:
 # GEOGRAPHY
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Geography" in view:
-    st.markdown('## 📍 Geographic Performance')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">📍 Geographic Performance</p>', unsafe_allow_html=True)
     col_l,col_r=st.columns([3,2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Revenue by District</div>',unsafe_allow_html=True)
@@ -1266,7 +1266,7 @@ elif "Geography" in view:
 # SCENARIO PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Scenario" in view:
-    st.markdown('## 🎯 Scenario Planning')
+    st.markdown('<p style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 4px">🎯 Scenario Planning</p>', unsafe_allow_html=True)
     st.markdown('<div class="section-sub">Adjust the 4 key levers — projection updates instantly</div>', unsafe_allow_html=True)
 
     BASE_ORDERS   = 200
