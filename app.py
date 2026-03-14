@@ -723,6 +723,8 @@ html, body { font-family: 'Inter', sans-serif !important; background: #f1f5f9 !i
 .stApp { background: #f1f5f9 !important; }
 footer { visibility: hidden !important; }
 div[data-testid="stDecoration"] { display: none !important; }
+div[data-testid="stToolbar"] { visibility: hidden !important; }
+#MainMenu { visibility: hidden !important; }
 
 /* Sidebar styling */
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
