@@ -739,7 +739,7 @@ section[data-testid="stSidebar"] .stMarkdown,
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p { color: #374151 !important; }
 /* Main content padding */
-.block-container { padding: 1rem 2rem 3rem !important; background: #f1f5f9 !important; }
+.block-container { padding: 4rem 2rem 3rem !important; background: #f1f5f9 !important; }
 /* Form elements */
 .stSelectbox > div > div, .stMultiSelect > div > div { background: #f8fafc !important; border-color: #e2e8f0 !important; border-radius: 8px !important; }
 .stButton > button { background: #2563eb !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
