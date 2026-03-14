@@ -748,7 +748,7 @@ section[data-testid="stSidebar"] p { color: #374151 !important; }
 .kpi-val { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
 .kpi-label { font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
 .kpi-sub { font-size: 11px; color: #9ca3af; }
-.section-header { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+.section-header { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 4px; margin-top: 0; display: block; }
 .section-sub { font-size: 13px; color: #64748b; margin-bottom: 18px; }
 .chart-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.05); margin-bottom: 14px; }
 .chart-title { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
@@ -905,7 +905,7 @@ tot_ord = filt_m["orders"].sum()
 # OVERVIEW
 # ══════════════════════════════════════════════════════════════════════════════
 if "Overview" in view:
-    st.markdown('<div class="section-header">📊 Overview</div>',unsafe_allow_html=True)
+    st.markdown('## 📊 Overview')
     st.markdown('<div class="section-sub">Shopee Singapore · Oct 2025 – Jan 2026 · 800 orders</div>',unsafe_allow_html=True)
     # ── AI Customer Segmentation panel
     with st.expander("🧠 AI Customer Segments — click to expand", expanded=False):
@@ -1010,7 +1010,7 @@ if "Overview" in view:
 # MOM
 # ══════════════════════════════════════════════════════════════════════════════
 elif "MoM" in view:
-    st.markdown('<div class="section-header">📅 Month-over-Month Analysis</div>',unsafe_allow_html=True)
+    st.markdown('## 📅 Month-over-Month Analysis')
     show_fc=st.toggle("Include Feb 2026 Forecast",value=True)
     comp=monthly_data[monthly_data["ym"].isin(months_compare)]
     if show_fc:
@@ -1102,7 +1102,7 @@ elif "Weekly" in view:
 # DAILY
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Daily" in view:
-    st.markdown('<div class="section-header">📆 Daily Analysis</div>',unsafe_allow_html=True)
+    st.markdown('## 📆 Daily Analysis')
     st.markdown('<div class="section-sub">Day-by-day · Singapore holidays highlighted</div>',unsafe_allow_html=True)
     dkey=st.radio("dk",["revenue","orders","aov","voucher_rate"],horizontal=True,label_visibility="collapsed",
                   format_func=lambda x:{"revenue":"Revenue","orders":"Orders","aov":"AOV","voucher_rate":"Voucher%"}[x])
@@ -1148,7 +1148,7 @@ elif "Daily" in view:
 # CAMPAIGNS
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Campaigns" in view:
-    st.markdown('<div class="section-header">📣 Campaigns & Channels</div>',unsafe_allow_html=True)
+    st.markdown('## 📣 Campaigns & Channels')
     col_l,col_r=st.columns(2)
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Campaign Revenue</div>',unsafe_allow_html=True)
@@ -1218,7 +1218,7 @@ elif "Campaigns" in view:
 # GEOGRAPHY
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Geography" in view:
-    st.markdown('<div class="section-header">📍 Geographic Performance</div>',unsafe_allow_html=True)
+    st.markdown('## 📍 Geographic Performance')
     col_l,col_r=st.columns([3,2])
     with col_l:
         st.markdown('<div class="chart-card"><div class="chart-title">Revenue by District</div>',unsafe_allow_html=True)
@@ -1266,7 +1266,7 @@ elif "Geography" in view:
 # SCENARIO PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Scenario" in view:
-    st.markdown('<div class="section-header">🎯 Scenario Planning</div>', unsafe_allow_html=True)
+    st.markdown('## 🎯 Scenario Planning')
     st.markdown('<div class="section-sub">Adjust the 4 key levers — projection updates instantly</div>', unsafe_allow_html=True)
 
     BASE_ORDERS   = 200
