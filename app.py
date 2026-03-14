@@ -1560,110 +1560,26 @@ for q, (body, action) in HARDCODED_QA.items():
     qa_js_entries.append(f"  '{q_esc}': {{ body: '{body_esc}', action: '{action_esc}' }}")
 QA_JS = "{\n" + ",\n".join(qa_js_entries) + "\n}"
 
-# ── Floating AI chatbot ───────────────────────────────────────────────────────
 # ── Floating AI chatbot ──────────────────────────────────────────────────────
-_qa  = {q: {"body": b, "action": a} for q, (b, a) in HARDCODED_QA.items()}
-_qs  = CHAT_QS
-_qa_js = json.dumps(_qa,  ensure_ascii=False)
-_qs_js = json.dumps(_qs,  ensure_ascii=False)
+_bot_qa   = {q: {"b": body, "a": action} for q, (body, action) in HARDCODED_QA.items()}
+_bot_data = json.dumps({"qa": _bot_qa, "qs": CHAT_QS}, ensure_ascii=False)
 
-components.html(
-    """<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
-<script>
-(function(){
-  var QA = """ + _qa_js + """;
-  var QS = """ + _qs_js + """;
-  var D  = window.parent.document;
+# Encode JS as base64 — zero quote-escaping issues in the onerror attribute
+import base64 as _b64
+_bot_js_b64 = _b64.b64encode(""" + repr(JS_TEMPLATE) + """.encode()).decode()
 
-  // Inject styles once
-  if (!D.getElementById('_sc_style')) {
-    var s = D.createElement('style'); s.id = '_sc_style';
-    s.textContent = [
-      '@keyframes _glow{0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.5)}50%{box-shadow:0 4px 34px rgba(37,99,235,.9)}}',
-      '@keyframes _up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}',
-      '@keyframes _in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}',
-      '@keyframes _bl{0%,100%{opacity:.2}50%{opacity:1}}',
-      '#_bub{position:fixed;bottom:24px;right:24px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#0891b2);border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;animation:_glow 3s ease-in-out infinite;z-index:99999;}',
-      '#_badge{position:absolute;top:-2px;right:-2px;width:17px;height:17px;border-radius:50%;background:#16a34a;border:2px solid #fff;font-size:7px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;}',
-      '#_panel{position:fixed;bottom:88px;right:24px;width:360px;height:500px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.18);z-index:99998;}',
-      '#_panel.open{display:flex;animation:_up .2s ease both}',
-      '#_hd{background:linear-gradient(135deg,#2563eb,#0891b2);padding:12px 15px;display:flex;align-items:center;gap:10px;flex-shrink:0;}',
-      '#_av{width:33px;height:33px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;}',
-      '#_msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}',
-      '#_msgs::-webkit-scrollbar{width:3px;}#_msgs::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px;}',
-      '._m{max-width:88%;animation:_in .18s ease both;font-family:Inter,system-ui,sans-serif;}',
-      '._m.u{align-self:flex-end;}._m.b{align-self:flex-start;}',
-      '._bu{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:12px;line-height:1.6;}',
-      '._bb{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;padding:10px 13px;border-radius:14px 14px 14px 3px;font-size:12px;line-height:1.75;}',
-      '._act{background:#fffbeb;border-left:3px solid #d97706;padding:6px 9px;margin-top:7px;font-size:11px;color:#92400e;font-weight:600;border-radius:0 5px 5px 0;}',
-      '#_chips{padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid #f1f5f9;flex-shrink:0;}',
-      '._ch{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:5px 11px;border-radius:20px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:Inter,system-ui,sans-serif;}',
-      '._ch:hover{background:#dbeafe;}',
-      '._dots{display:flex;gap:4px;align-items:center;padding:3px 0;}',
-      '._dot{width:6px;height:6px;border-radius:50%;background:#93c5fd;}',
-      '._dot:nth-child(1){animation:_bl 1.2s 0s infinite}._dot:nth-child(2){animation:_bl 1.2s .2s infinite}._dot:nth-child(3){animation:_bl 1.2s .4s infinite}'
-    ].join('');
-    D.head.appendChild(s);
-  }
+_bot_css  = """ + repr(CSS) + """
+_bot_html = """ + repr(HTML) + """
 
-  // Inject HTML once
-  if (!D.getElementById('_bub')) {
-    var w = D.createElement('div');
-    w.innerHTML = '<button id="_bub">🤖<span id="_badge">AI</span></button>'
-      + '<div id="_panel">'
-      + '<div id="_hd"><div id="_av">🤖</div>'
-      + '<div style="flex:1"><div style="font-weight:700;font-size:13px;color:#fff;font-family:Inter,sans-serif">Shopee AI Analyst</div>'
-      + '<div style="font-size:10px;color:rgba(255,255,255,.75);font-family:Inter,sans-serif">● Tap a question for an instant insight</div></div>'
-      + '<button onclick="window._scTog()" style="background:transparent;border:none;color:rgba(255,255,255,.7);font-size:22px;cursor:pointer;padding:0 4px;line-height:1;margin-left:auto">×</button>'
-      + '</div><div id="_msgs"></div><div id="_chips"></div></div>';
-    while (w.firstChild) D.body.appendChild(w.firstChild);
-    D.getElementById('_bub').onclick = window._scTog;
-  }
+# data-q stores JSON; onerror=eval(atob(...)) runs the JS — no script tags needed
+_bot_data_tag = '<div id="_scdata" data-q=\'\' style="display:none"></div>'
+_bot_img_tag  = '<img src="x" onerror="eval(atob(\'' + _bot_js_b64 + '\'))" style="display:none" alt="">'
 
-  var isOpen=false, inited=false, busy=false;
+st.markdown(_bot_css + _bot_html + _bot_data_tag + _bot_img_tag, unsafe_allow_html=True)
 
-  window._scTog = function(){
-    isOpen = !isOpen;
-    D.getElementById('_panel').classList.toggle('open', isOpen);
-    if (isOpen && !inited) {
-      inited = true;
-      add('b', "👋 Hi! I'm your Shopee analyst. Tap a question below for an instant insight.", null);
-      renderChips();
-    }
-  };
-
-  function renderChips(){
-    var box = D.getElementById('_chips'); box.innerHTML = '';
-    QS.forEach(function(q){
-      var b = D.createElement('button'); b.className='_ch'; b.textContent = q;
-      b.onclick = function(){ go(q); };
-      box.appendChild(b);
-    });
-  }
-
-  function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
-
-  function add(role, text, action){
-    var d = D.createElement('div'); d.className = '_m ' + (role==='u'?'u':'b');
-    d.innerHTML = role==='u'
-      ? '<div class="_bu">'+esc(text)+'</div>'
-      : '<div class="_bb">'+esc(text)+(action?'<div class="_act">⚡ '+esc(action)+'</div>':'')+'</div>';
-    var m = D.getElementById('_msgs'); m.appendChild(d); m.scrollTop=99999;
-  }
-
-  function go(q){
-    if(busy) return; busy=true; add('u',q,null);
-    var t=D.createElement('div'); t.id='_typ'; t.className='_m b';
-    t.innerHTML='<div class="_bb"><div class="_dots"><div class="_dot"></div><div class="_dot"></div><div class="_dot"></div></div></div>';
-    var m=D.getElementById('_msgs'); m.appendChild(t); m.scrollTop=99999;
-    setTimeout(function(){
-      var x=D.getElementById('_typ'); if(x)x.remove();
-      var r=QA[q];
-      add('b', r?r.body:"No answer — try another question.", r?r.action:null);
-      busy=false;
-    }, 700);
-  }
-})();
-</script></body></html>""",
-    height=0, scrolling=False
+# Write JSON into data-q attribute via components.html (safe — only setAttribute, no DOM creation)
+_set_data_js = (
+    "<script>var e=window.parent.document.getElementById('_scdata');"
+    "if(e)e.setAttribute('data-q'," + json.dumps(json.dumps({"qa": _bot_qa, "qs": CHAT_QS}, ensure_ascii=False)) + ");</script>"
 )
+components.html(_set_data_js, height=0, scrolling=False)
